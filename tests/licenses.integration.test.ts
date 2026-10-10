@@ -579,6 +579,16 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
             sizeBytes: 32,
           })
         );
+        assert.equal(
+          validateOptimizerRelease({
+            version: '0.3.0',
+            downloadUrl: '/downloads/optimizer.zip',
+            sha256: 'a'.repeat(64),
+            sizeBytes: 32,
+            activationAvailable: false,
+          })?.activationAvailable,
+          false
+        );
       }
     );
 

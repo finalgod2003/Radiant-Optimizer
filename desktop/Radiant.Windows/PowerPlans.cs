@@ -43,9 +43,10 @@ internal static class PowerPlans
 
     public static void Activate(Guid scheme)
     {
-        // Applies to restoration too: a removed plan cannot be recreated implicitly.
-        if (!Read().Any(plan => Guid.Parse(plan.Id) == scheme))
-            throw new InvalidOperationException("This power plan no longer exists. Refresh the list and choose an existing plan.");
+        // New targets are restricted by PrepareAsync to the enumerated plans.
+        // Recovery must also accept the exact previously active GUID: Windows can
+        // hide a valid scheme from enumeration. PowerSetActiveScheme itself rejects
+        // unavailable IDs and never asks us to create or duplicate a plan.
         ThrowIfError(Native.PowerSetActiveScheme(IntPtr.Zero, ref scheme), "switch the active power plan");
         if (ReadActive() != scheme) throw new IOException("Windows did not activate the requested power plan.");
     }

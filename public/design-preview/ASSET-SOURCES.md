@@ -1,6 +1,27 @@
 # Original client and homepage views
 
-The product images are rendered from this repository's independent read-only Windows WPF preview, version 0.2.0. UI, branding and application code are implemented in `desktop/preview/`. The full optimizer is maintained separately under `desktop/`. No third-party product screenshots are used.
+## Primary client 0.3.0 (current homepage)
+
+`radiant-client-overview.png`, `radiant-client-optimize.png`, and
+`radiant-client-recovery.png` are rendered from the primary Windows WPF client
+under `desktop/`, version 0.3.0, at 1200 × 820. The homepage uses these images
+with the approved C / Midnight blue palette. No competitor screenshots are used.
+
+Overview uses actual sampled hardware information from the development PC, not
+promised results for another machine. Windows settings shows the actual optional
+animation controls. Recovery shows real native acceptance records: all three
+operations were restored and verified. A generic custom-folder label avoids
+exposing private filesystem paths.
+
+Regenerate using the primary `Optimizer.exe --snapshot <image.png> --snapshot-page
+<overview|optimize|recovery> --data-directory <directory>`. This reads and renders
+the app's own visual tree; it does not apply optimization or open a desktop window.
+Use the retained native verification folder for the historical Recovery view.
+See `docs/optimizer-0.3-verification.md` for scope and release limitations.
+
+## Archived read-only studies (0.2.0)
+
+The older images below are rendered from this repository's independent read-only Windows WPF preview, version 0.2.0. UI, branding and application code are implemented in `desktop/preview/`. The full optimizer is maintained separately under `desktop/`. No third-party product screenshots are used.
 
 - `radiant-overview-light.png` and `radiant-overview-dark.png`: the application's Overview page.
 - `radiant-checks-light.png` and `radiant-checks-dark.png`: the application's System checks page.

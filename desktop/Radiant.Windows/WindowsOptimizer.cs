@@ -33,6 +33,9 @@ public sealed class WindowsOptimizer
     public Task<ChangeRecord> RestoreAsync(string changeId, bool force = false, CancellationToken cancellationToken = default)
         => engine.RestoreAsync(changeId, force, cancellationToken);
 
+    public Task<IReadOnlyList<ChangeRecord>> RestoreAllAsync(CancellationToken cancellationToken = default)
+        => engine.RestoreAllAsync(cancellationToken);
+
     public Task<IReadOnlyList<ChangeRecord>> ReadHistoryAsync(CancellationToken cancellationToken = default)
         => engine.ReadHistoryAsync(cancellationToken);
 }

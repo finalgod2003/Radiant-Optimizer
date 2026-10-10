@@ -25,6 +25,22 @@ public partial class App : Application
             var dataDirectory = Path.GetFullPath(Argument("--data-directory") ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OptimizerPreview"));
             var engine = new WindowsOptimizer(dataDirectory);
+            if (Argument("--restore-settings-output") is string recoveryPath)
+            {
+                var result = await Task.Run(() => engine.RestoreAllAsync());
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(recoveryPath))!);
+                await File.WriteAllTextAsync(recoveryPath, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                Shutdown(result.All(r => r.Status == Radiant.Core.ChangeStatus.Restored) ? 0 : 1);
+                return;
+            }
+            if (Argument("--verify-settings-roundtrip") is string roundtripPath)
+            {
+                var result = await Task.Run(() => WindowsRoundtripVerification.RunAsync(Path.Combine(dataDirectory, "verification-" + Guid.NewGuid().ToString("N"))));
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(roundtripPath))!);
+                await File.WriteAllTextAsync(roundtripPath, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                Shutdown(0);
+                return;
+            }
             if (Argument("--diagnostics-output") is string diagnosticsPath)
             {
                 using var monitor = new SystemMonitor(engine);

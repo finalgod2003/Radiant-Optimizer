@@ -99,6 +99,16 @@ public sealed class OptimizationEngine(ISettingsAdapter adapter, IChangeJournal 
             var entries = await RecoverInterruptedAsync(cancellationToken);
             var entry = entries.SingleOrDefault(candidate => candidate.Id == changeId)
                 ?? throw new KeyNotFoundException("This change was not found in the recovery journal.");
+            if (entries.Any(newer => newer.CreatedAt > entry.CreatedAt && IsOutstanding(newer)
+                && newer.Changes.Any(c => entry.Changes.Any(original => original.SettingId == c.SettingId))))
+                throw new InvalidOperationException("A newer change affects the same setting. Restore it first, or use Restore all Windows changes.");
+            return await RestoreEntryAsync(entry, force, cancellationToken);
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task<ChangeRecord> RestoreEntryAsync(JournalEntry entry, bool force, CancellationToken cancellationToken)
+    {
             if (entry.Status == ChangeStatus.Restored) return entry.ToRecord();
 
             var changes = new List<SettingChange>();
@@ -165,9 +175,51 @@ public sealed class OptimizationEngine(ISettingsAdapter adapter, IChangeJournal 
                 await journal.SaveAsync(entry, CancellationToken.None);
             }
             return entry.ToRecord();
+    }
+
+    /// <summary>Undo newest first under one cross-process lease. A conflict blocks
+    /// older changes to the same setting, while unrelated settings can recover.</summary>
+    public async Task<IReadOnlyList<ChangeRecord>> RestoreAllAsync(CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var lease = await journal.AcquireAsync(cancellationToken);
+            var entries = await RecoverInterruptedAsync(cancellationToken);
+            var blocked = new HashSet<string>(StringComparer.Ordinal);
+            var results = new List<ChangeRecord>();
+            foreach (var entry in entries.Where(IsOutstanding).OrderByDescending(e => e.CreatedAt))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ChangeRecord result;
+                if (entry.Changes.Any(c => blocked.Contains(c.SettingId)))
+                {
+                    var deferred = entry with { Status = ChangeStatus.NeedsAttention,
+                        Error = "A newer change to this setting could not be restored. Resolve that record first; this original backup is retained." };
+                    await journal.SaveAsync(deferred, cancellationToken);
+                    result = deferred.ToRecord();
+                }
+                else
+                {
+                    try { result = await RestoreEntryAsync(entry, false, cancellationToken); }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                    catch (Exception error)
+                    {
+                        var failed = entry with { Status = ChangeStatus.RestoreFailed, Error = DescribeError(error) + " Original backup kept; other independent settings will still be checked." };
+                        await journal.SaveAsync(failed, CancellationToken.None);
+                        result = failed.ToRecord();
+                    }
+                }
+                if (result.Status != ChangeStatus.Restored)
+                    foreach (var change in entry.Changes) blocked.Add(change.SettingId);
+                results.Add(result);
+            }
+            return results;
         }
         finally { gate.Release(); }
     }
+
+    private static bool IsOutstanding(JournalEntry entry) => entry.Status is not (ChangeStatus.Restored or ChangeStatus.Unchanged);
 
     public async Task<IReadOnlyList<ChangeRecord>> ReadHistoryAsync(CancellationToken cancellationToken = default)
     {

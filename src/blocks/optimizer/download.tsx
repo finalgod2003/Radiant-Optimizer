@@ -77,6 +77,11 @@ export function OptimizerDownload() {
                 {m['optimizer.download.version']({ version: release.version })}
               </h2>
               <p>{m['optimizer.download.package_description']()}</p>
+              {release.activationAvailable === false && (
+                <p className="op-notice">
+                  {m['optimizer.download.free_build']()}
+                </p>
+              )}
               <a
                 className="op-button"
                 href={release.downloadUrl}
@@ -178,8 +183,8 @@ export function OptimizerDownload() {
             </p>
             <h2>{m['optimizer.download.steps_title']()}</h2>
           </div>
-          <Link className="op-text-link" href="/activate-device">
-            {m['optimizer.nav.activate']()}
+          <Link className="op-text-link" href="/features#compatibility">
+            {m['optimizer.download.support_link']()}
             <ArrowRight size={16} />
           </Link>
         </div>

@@ -70,6 +70,9 @@ export function validateOptimizerRelease(
     downloadUrl: r.downloadUrl,
     sha256: r.sha256.toLowerCase(),
     sizeBytes: r.sizeBytes!,
+    ...(typeof r.activationAvailable === 'boolean'
+      ? { activationAvailable: r.activationAvailable }
+      : {}),
   };
 }
 

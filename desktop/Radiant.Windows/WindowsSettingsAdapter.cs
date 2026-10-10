@@ -24,6 +24,10 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
 
     private static readonly TweakDefinition[] Definitions =
     [
+        new("client-animations", "Reduce interface animations", "Disable Windows client-area animations in apps that respect this preference. Supported interfaces become less animated; this does not promise more game FPS. Original preference is backed up and can be restored without restarting Windows.", "Interface", false,
+            [new(VisualPreferences.ClientAnimations, SettingValue.DWord(0))]),
+        new("window-animations", "Instant window transitions", "Disable minimize/restore animations so windows appear and disappear immediately. This changes desktop transitions, not application processing speed. The original preference is saved before applying.", "Interface", false,
+            [new(VisualPreferences.WindowAnimations, SettingValue.DWord(0))]),
         new("game-mode", "Game Mode", "Enable the current user's Windows Game Mode preference. Restart running games after applying; no frame-rate gain is guaranteed.", "Gaming", false,
             [new("gaming.auto-game-mode", SettingValue.DWord(1)), new("gaming.allow-auto-game-mode", SettingValue.DWord(1))]),
         new("game-recording", "Game recording", "Disable the current user's built-in game capture preferences. Windows Game Bar recording may stop working until you restore these values. This does not uninstall or close recording applications.", "Gaming", false,
@@ -47,7 +51,7 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
         if (option is not null) throw new ArgumentException("This setting does not accept an option.", nameof(option));
         var definition = Definitions.SingleOrDefault(candidate => candidate.Id == tweakId)
             ?? throw new ArgumentException("Unknown optimization action. Only listed settings can be applied.", nameof(tweakId));
-        EnsureGamingAvailable(definition);
+        if (definition.Category == "Gaming") EnsureGamingAvailable(definition);
         return Task.FromResult(new OptimizationPlan(tweakId, definition.Targets, definition.RestartRequired));
     }
 
@@ -55,6 +59,7 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureWindows();
+        if (VisualPreferences.Handles(settingId)) return Task.FromResult(VisualPreferences.Read(settingId));
         return Task.FromResult(settingId == ActivePowerPlan
             ? SettingValue.PowerPlan(PowerPlans.ReadActive()) : ReadRegistry(FindRegistrySetting(settingId)));
     }
@@ -64,6 +69,11 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
         cancellationToken.ThrowIfCancellationRequested();
         EnsureWindows();
         value.Validate();
+        if (VisualPreferences.Handles(settingId))
+        {
+            VisualPreferences.Write(settingId, value);
+            return Task.CompletedTask;
+        }
         if (settingId == ActivePowerPlan)
         {
             if (value.Kind != SettingValueKind.PowerPlan) throw new InvalidDataException("A power plan requires a saved GUID.");
@@ -99,8 +109,10 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
             try
             {
                 foreach (var target in definition.Targets)
-                    current.Add($"{RegistrySettings[target.SettingId].Name}: {(await ReadAsync(target.SettingId, cancellationToken)).ToDisplayString()}");
-                EnsureGamingAvailable(definition);
+                    current.Add(VisualPreferences.Handles(target.SettingId)
+                        ? (await ReadAsync(target.SettingId, cancellationToken)).Data == "1" ? "On" : "Off"
+                        : $"{RegistrySettings[target.SettingId].Name}: {(await ReadAsync(target.SettingId, cancellationToken)).ToDisplayString()}");
+                if (definition.Category == "Gaming") EnsureGamingAvailable(definition);
             }
             catch (Exception error) when (error is not OperationCanceledException) { reason = error.Message; }
             result.Add(new TweakStatus(definition.Id, definition.Title, definition.Description, definition.Category,

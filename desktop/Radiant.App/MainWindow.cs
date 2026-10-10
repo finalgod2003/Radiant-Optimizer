@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private string currentPage = "overview";
     private bool chinese;
     private bool experimentalEnabled;
+    private bool changingSettings;
     private bool closeReady;
     private bool closePending;
     private readonly Grid shell;
@@ -49,11 +50,11 @@ public sealed partial class MainWindow : Window
         shell = new Grid { Background = Ui.Background };
         shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(228) });
         shell.ColumnDefinitions.Add(new ColumnDefinition());
-        var sidebar = new DockPanel { Background = Ui.Brush("#141B16"), Margin = new Thickness(0) };
+        var sidebar = new DockPanel { Background = Ui.Brush("#172338"), Margin = new Thickness(0) };
         var brand = Ui.Stack(Ui.Text("R /", 38, Ui.Accent, true), Ui.Text(settings.AppName, 18, bold: true), edition);
         brand.Margin = new Thickness(24, 28, 18, 36);
         DockPanel.SetDock(brand, Dock.Top); sidebar.Children.Add(brand);
-        var bottom = Ui.Stack(Ui.Text("0.2.0 · " + settings.Channel, 11, Ui.Muted),
+        var bottom = Ui.Stack(Ui.Text("0.3.0 · " + settings.Channel, 11, Ui.Muted),
             Ui.Button("EN / 中文", () => _ = ToggleLanguageAsync()));
         bottom.Margin = new Thickness(24, 20, 24, 24);
         DockPanel.SetDock(bottom, Dock.Bottom); sidebar.Children.Add(bottom);
@@ -70,6 +71,12 @@ public sealed partial class MainWindow : Window
         Content = shell;
         Closing += async (_, eventArgs) =>
         {
+            if (changingSettings)
+            {
+                eventArgs.Cancel = true;
+                Notice("Finishing the current settings operation. Your backup is retained; close the app when the result appears.");
+                return;
+            }
             if (closeReady) return;
             eventArgs.Cancel = true;
             if (closePending) return;
@@ -91,7 +98,7 @@ public sealed partial class MainWindow : Window
         UpdateEdition();
         await NavigateAsync(currentPage);
         if (licenses.CacheWarning is string cacheWarning) Notice(cacheWarning, error: true);
-        if (refreshLicense)
+        if (refreshLicense && ProductSettings.TrustedKeys().Length > 0)
         {
             try { await licenses.RefreshAsync(lifetime.Token); UpdateEdition(); }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -116,7 +123,7 @@ public sealed partial class MainWindow : Window
             button.Margin = new Thickness(0, 0, 0, 7);
             button.Padding = new Thickness(14, 10, 8, 10);
             button.BorderThickness = new Thickness(0);
-            button.Background = currentPage == item.Id ? Ui.Brush("#263422") : Brushes.Transparent;
+            button.Background = currentPage == item.Id ? Ui.Brush("#2B3D5D") : Brushes.Transparent;
             button.Foreground = currentPage == item.Id ? Ui.Accent : Ui.Muted;
             navigation.Children.Add(button);
         }
@@ -151,6 +158,7 @@ public sealed partial class MainWindow : Window
 
     private async Task NavigateAsync(string target)
     {
+        if (changingSettings) return;
         StopMonitoring();
         pageCancellation.Cancel(); pageCancellation.Dispose();
         pageCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -215,6 +223,7 @@ public sealed partial class MainWindow : Window
     {
         "game-mode" => L("Game Mode", "游戏模式"), "game-recording" => L("Game recording", "游戏录制"),
         "background-capture" => L("Background capture", "后台录制"), "power-plan" => L("Power plan", "电源计划"),
+        "client-animations" => "Reduce interface animations", "window-animations" => "Instant window transitions",
         _ => tweak.Title
     };
 
@@ -229,9 +238,8 @@ public sealed partial class MainWindow : Window
             IsChecked = experimentalEnabled, Foreground = Ui.Foreground, Margin = new Thickness(0, 8, 0, 0) };
         enableChanges.Checked += (_, _) => { experimentalEnabled = true; _ = NavigateAsync("optimize"); };
         enableChanges.Unchecked += (_, _) => { experimentalEnabled = false; _ = NavigateAsync("optimize"); };
-        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text(L("PREVIEW · SETTINGS ARE EXPERIMENTAL", "预览版 · 系统设置为实验性功能"), 11, Ui.Accent, true),
-            Ui.Text(L("Backup and recovery logic is tested. The effect of these changes still needs isolated testing on each supported Windows build.",
-                "备份与恢复逻辑已测试。这些更改在各 Windows 版本上的效果仍需隔离环境验证。"), 13, Ui.Muted), enableChanges)));
+        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text("BACK UP → APPLY → VERIFY → RESTORE", 11, Ui.Accent, true),
+            Ui.Text("Animation adjustments use Windows interfaces. Every adjustment saves its original before writing. One-click recovery is available on the Recovery page. Game preferences and power-plan changes remain opt-in for this session.", 13, Ui.Muted), enableChanges)));
         foreach (var tweak in tweaks.Where(item => item.Id != "power-plan"))
         {
             var text = L(tweak.Description, tweak.Id switch
@@ -251,10 +259,10 @@ public sealed partial class MainWindow : Window
                 if (MessageBox.Show(L("Save the original value and apply this change?", "保存原值并应用这项更改？")
                         + "\n\n" + TweakTitle(tweak) + "\n" + tweak.CurrentValue + " → " + tweak.TargetValue,
                         settings.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-                var result = await optimizer.ApplyAsync(tweak.Id, cancellationToken: token);
+                var result = await ChangeSettingsAsync(() => optimizer.ApplyAsync(tweak.Id, cancellationToken: token));
                 await NavigateAsync("optimize"); ShowChangeResult(result);
             }, true);
-            apply.IsEnabled = tweak.Supported && experimentalEnabled;
+            apply.IsEnabled = tweak.Supported && (tweak.Category == "Interface" || experimentalEnabled);
             body.Children.Add(apply); page.Children.Add(Ui.Card(body));
         }
         var power = Ui.Stack(Ui.Row(Ui.Text(L("Power plans", "电源计划"), 20, bold: true), Ui.Text("PREMIUM", 10, Ui.Accent)),
@@ -267,7 +275,7 @@ public sealed partial class MainWindow : Window
                 if (!licenses.CachedStatus().IsPremium) { await NavigateAsync("account"); return; }
                 if (MessageBox.Show(L("Switch the active power plan to ", "将当前电源计划切换为 ") + plan.Name + "?",
                     settings.AppName, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-                var result = await optimizer.ApplyAsync("power-plan", plan.Id, token);
+                var result = await ChangeSettingsAsync(() => optimizer.ApplyAsync("power-plan", plan.Id, token));
                 await NavigateAsync("optimize"); ShowChangeResult(result);
             });
             button.Margin = new Thickness(0, 6, 0, 0);
@@ -312,12 +320,28 @@ public sealed partial class MainWindow : Window
         token.ThrowIfCancellationRequested();
         Heading("Every change has a record.", "每次更改都有记录。", "Restore saved original values. This remains available without Premium.",
             "恢复已保存的原始值。此能力始终免费。");
+        var outstanding = history.Count(item => item.Status is not ("restored" or "unchanged"));
+        var defaultData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OptimizerPreview");
+        var backupLabel = string.Equals(Path.GetFullPath(dataDirectory), Path.GetFullPath(defaultData), StringComparison.OrdinalIgnoreCase)
+            ? @"%LOCALAPPDATA%\OptimizerPreview\recovery" : "Custom local data folder / recovery";
+        var restoreAll = AsyncButton("Restore all Windows changes", async () =>
+        {
+            var results = await ChangeSettingsAsync(() => optimizer.RestoreAllAsync(token));
+            await NavigateAsync("recovery");
+            var remaining = results.Count(r => r.Status != ChangeStatus.Restored);
+            Notice(remaining == 0 ? "All recorded Windows changes restored and verified."
+                : $"{results.Count - remaining} restored; {remaining} still need attention. Review the records below. External changes were not overwritten.", remaining > 0);
+        }, true);
+        restoreAll.IsEnabled = outstanding > 0;
+        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text("A way back, in one click.", 22, bold: true),
+            Ui.Text($"{outstanding} Windows changes still need restoration. Saved originals are retained after recovery. Restore runs newest first; game-file backups remain separate below.", 13, Ui.Muted),
+            restoreAll, Ui.Text("Backups: " + backupLabel + "\nKeep this folder to retain recovery. These are setting backups, not a full Windows image.", 11, Ui.Muted))));
         if (history.Count == 0) page.Children.Add(Ui.Card(Ui.Stack(Ui.Text(L("Your history starts with your first change.", "应用第一项设置后，这里就会出现记录。"), 20),
             Ui.Text(L("Original values are saved before supported settings are written.", "支持的设置会在写入前保存原始值。"), 13, Ui.Muted))));
         foreach (var change in history.OrderByDescending(item => item.CreatedAt).Take(60))
         {
-            var body = Ui.Stack(Ui.Text(change.TweakId, 19, bold: true),
-                Ui.Text(change.CreatedAt.ToLocalTime().ToString("g") + " · " + change.Status, 12, Ui.Muted),
+            var body = Ui.Stack(Ui.Text(change.TweakId switch { "client-animations" => "Reduce interface animations", "window-animations" => "Instant window transitions", "power-plan" => "Power plan", "game-mode" => "Game Mode", "game-recording" => "Game recording", "background-capture" => "Background capture", _ => change.TweakId }, 19, bold: true),
+                Ui.Text(change.CreatedAt.ToLocalTime().ToString("MMM d, yyyy · HH:mm:ss zzz", CultureInfo.InvariantCulture) + " · " + (change.Status == "restored" ? "Restored · verified" : change.Status), 12, Ui.Muted),
                 Ui.Text(L("Original: ", "原始值：") + change.Before, 12), Ui.Text(L("Changed to: ", "修改为：") + change.After, 12, Ui.Muted));
             if (change.Error is not null) body.Children.Add(Ui.Text(change.Error, 12, Ui.Brush("#F0AE7C")));
             if (change.Status is not "restored" and not "unchanged")
@@ -325,7 +349,15 @@ public sealed partial class MainWindow : Window
                 {
                     if (MessageBox.Show(L("Restore the saved original value? External changes will be checked first.",
                         "恢复保存的原值？操作前会检查是否有其他程序更改过设置。"), settings.AppName, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-                    var result = await optimizer.RestoreAsync(change.Id, cancellationToken: token);
+                    var result = await ChangeSettingsAsync(() => optimizer.RestoreAsync(change.Id, cancellationToken: token));
+                    await NavigateAsync("recovery"); ShowChangeResult(result);
+                }));
+            if (change.Status == ChangeStatus.Conflict)
+                body.Children.Add(AsyncButton("Review conflicting restore…", async () =>
+                {
+                    if (MessageBox.Show("Windows has a value outside this change record.\n\n" + change.Error + "\n\nSaved original: " + change.Before
+                        + "\n\nBack up the current external values, then restore these originals?", settings.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+                    var result = await ChangeSettingsAsync(() => optimizer.RestoreAsync(change.Id, force: true, cancellationToken: token));
                     await NavigateAsync("recovery"); ShowChangeResult(result);
                 }));
             page.Children.Add(Ui.Card(body));
@@ -342,6 +374,13 @@ public sealed partial class MainWindow : Window
 
     private void AccountPage(CancellationToken token)
     {
+        if (ProductSettings.TrustedKeys().Length == 0)
+        {
+            Heading("Free local preview", "免费本地预览", "System checks, interface adjustments and recovery are ready to use.", "可使用系统检测、界面调整与恢复。");
+            page.Children.Add(Ui.Card(Ui.Stack(Ui.Text("Activation is not configured in this build.", 22, bold: true),
+                Ui.Text("This package has no license verification keys. Premium activation becomes available in a release configured for your product's licensing service. Existing local backups can always be restored.", 14, Ui.Muted))));
+            return;
+        }
         var status = licenses.CachedStatus();
         Heading("One PC. Your toolkit.", "一台电脑，一套工具。", "Use your website account to approve this device. Your browser password stays in the browser.",
             "在网站账号中确认此设备。网页登录凭据不会传入客户端。");

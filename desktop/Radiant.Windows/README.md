@@ -6,8 +6,8 @@ always available regardless of entitlement state.
 
 ## Implemented operations
 
-All paths below are under **HKEY_CURRENT_USER**. The adapter maps fixed IDs to
-paths itself; callers and journal entries cannot supply a registry path or script.
+Registry paths below are under **HKEY_CURRENT_USER**. The adapter maps fixed IDs
+to paths or native APIs itself; callers cannot supply a registry path or script.
 
 | Action ID            | Title              | Setting IDs / fixed values                                                                                                                               | Applied target                                |
 | -------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
@@ -15,6 +15,16 @@ paths itself; callers and journal entries cannot supply a registry path or scrip
 | `game-recording`     | Game recording     | `gaming.game-dvr`: `System\GameConfigStore\GameDVR_Enabled`; `gaming.app-capture`: `Software\Microsoft\Windows\CurrentVersion\GameDVR\AppCaptureEnabled` | DWORD 0 / 0                                   |
 | `background-capture` | Background capture | `gaming.historical-capture`: `Software\Microsoft\Windows\CurrentVersion\GameDVR\HistoricalCaptureEnabled`                                                | DWORD 0                                       |
 | `power-plan`         | Power plan         | `power.active-plan`, Windows PowrProf API                                                                                                                | Existing enumerated GUID provided as `option` |
+
+Two additional Free actions use documented Windows animation APIs:
+
+- `client-animations`: `interface.client-animations`, GET/SETCLIENTAREAANIMATION.
+- `window-animations`: `interface.window-animations`, GET/SETANIMATION.
+
+Both target Disabled, retain the saved Boolean, and require per-action review.
+They persist with `SPIF_UPDATEINIFILE` and send a bounded `WM_SETTINGCHANGE`
+notification. They do not require the experimental gaming-session opt-in.
+These are desktop preferences, not measured FPS boosts.
 
 Gaming actions are exposed only on Windows build 19041 or later. An unexpected
 existing registry type disables new applications, and a machine Game DVR policy
@@ -29,8 +39,10 @@ process termination, service changes, or driver changes are implemented.
 
 Power operations use `PowerEnumerate`, `PowerGetActiveScheme`,
 `PowerReadFriendlyName`, and `PowerSetActiveScheme`; they do not shell out to
-`powercfg`. A switch or restore must reference a plan that still exists, and its
-active GUID is read back. Permission or policy failures are returned explicitly.
+`powercfg`. New targets must be enumerated plans. Restore uses the exact saved
+GUID because Windows can hide a valid active scheme from enumeration.
+`PowerSetActiveScheme` validates availability; removed plans are never created.
+The active GUID is read back. Permission or policy failures are returned explicitly.
 
 ## Recovery semantics
 
@@ -38,6 +50,9 @@ active GUID is read back. Permission or policy failures are returned explicitly.
 - The per-user `dataDirectory/recovery` journal is flushed to disk before the
   first mutation, and records intent before each subsequent write. Entries are
   replaced from a flushed temporary file in the same directory.
+- Version 0.3 retains write-once `.original` files with SHA-256 checksums. Status
+  updates cannot alter the original/target values. Missing status files recover
+  from the original; damaged originals stop changes. Old 0.2 records remain readable.
 - A cross-process lock and an in-process gate prevent concurrent optimizer
   writers using the same journal. Failed/corrupt journal reads stop new changes.
 - Each write is preceded by a current-value conflict check after journal
@@ -55,6 +70,11 @@ active GUID is read back. Permission or policy failures are returned explicitly.
   writes settings. Partial changes and unverified values remain visible.
 - Restore attempts retain the original snapshot on failure. The same operation
   can be retried. A removed original power plan is not recreated implicitly.
+- Forced restore preserves observed external values in a separate `.external`
+  backup before writing. All backups remain after restoration.
+- Bulk restore uses one lease, newest first. A failed/conflicting newer record
+  blocks older operations on the same settings; unrelated settings can recover.
+  Individual restore also enforces this ordering. Game files use a separate engine.
 - The journal stores only the fixed settings above and operation metadata. It is
   never uploaded. It contains no account credentials or license tokens.
 
@@ -89,8 +109,16 @@ temporary journal files. They do not write the real registry, switch power plans
 or terminate processes. A successful core test run is distinct from target-OS
 functional write acceptance.
 
+Version 0.3 native acceptance applied and restored both animations and an existing
+power plan on the development PC, reopening its journal before recovery. All
+original values matched afterward. This does not certify all Windows configurations.
+See `docs/optimizer-0.3-verification.md` for evidence and commands.
+
 API references: [Power enumeration](https://learn.microsoft.com/en-us/windows/win32/api/powrprof/nf-powrprof-powerenumerate),
 [active power plan](https://learn.microsoft.com/en-us/windows/win32/api/powrprof/nf-powrprof-powersetactivescheme),
 [CPU times](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getsystemtimes),
 [physical memory](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-globalmemorystatusex),
 [display devices](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaydevicesw).
+
+Animation APIs: [SystemParametersInfoW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow),
+[ANIMATIONINFO](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-animationinfo).

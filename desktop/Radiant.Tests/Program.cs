@@ -25,6 +25,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("on-disk journal persists exact snapshots and locks another instance", FileJournalRoundtrip),
     ("corrupt journal prevents mutation", CorruptJournal),
     ("unknown action is rejected before journaling or mutation", UnknownAction),
+    ("one-click restoration undoes newest records first", RestoreAllOrder),
+    ("one-click conflict blocks older records for the same setting", RestoreAllConflict),
+    ("single restore cannot overwrite a newer adjustment", RestoreOrderGuard),
+    ("immutable originals survive missing state and reject changed originals", ImmutableOriginal),
+    ("one unavailable setting does not block unrelated restoration", RestoreAllIndependent),
+    ("forced restore keeps a separate backup of external values", ExternalOriginal),
 };
 
 var failures = 0;
@@ -35,6 +41,93 @@ foreach (var (name, run) in tests)
 }
 Console.WriteLine($"{tests.Length - failures}/{tests.Length} tests passed. All setting writes used in-memory adapters.");
 return failures == 0 ? 0 : 1;
+
+static async Task RestoreAllOrder()
+{
+    var (adapter, journal, engine) = Fixture();
+    var older = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) };
+    var newer = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow,
+        Changes = [new("setting-0", SettingValue.DWord(1), SettingValue.DWord(2))] };
+    journal.Entries[older.Id] = older; journal.Entries[newer.Id] = newer;
+    adapter.Values["setting-0"] = SettingValue.DWord(2);
+    var results = await engine.RestoreAllAsync();
+    Equal(newer.Id, results[0].Id); Equal(older.Id, results[1].Id);
+    True(results.All(r => r.Status == ChangeStatus.Restored), "Every record must verify its original.");
+    Equal(SettingValue.DWord(0), adapter.Values["setting-0"]);
+    var writes = adapter.WriteCount;
+    Equal(0, (await engine.RestoreAllAsync()).Count); Equal(writes, adapter.WriteCount);
+}
+
+static async Task RestoreAllConflict()
+{
+    var (adapter, journal, engine) = Fixture();
+    var older = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) };
+    var newer = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow,
+        Changes = [new("setting-0", SettingValue.DWord(1), SettingValue.DWord(2))] };
+    journal.Entries[older.Id] = older; journal.Entries[newer.Id] = newer;
+    adapter.Values["setting-0"] = SettingValue.DWord(3);
+    var results = await engine.RestoreAllAsync();
+    Equal(ChangeStatus.Conflict, results[0].Status); Equal(ChangeStatus.NeedsAttention, results[1].Status);
+    Equal(0, adapter.WriteCount); Equal(SettingValue.DWord(3), adapter.Values["setting-0"]);
+}
+
+static async Task RestoreOrderGuard()
+{
+    var (adapter, journal, engine) = Fixture();
+    var older = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) };
+    var newer = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow };
+    journal.Entries[older.Id] = older; journal.Entries[newer.Id] = newer;
+    await Throws<InvalidOperationException>(() => engine.RestoreAsync(older.Id)); Equal(0, adapter.WriteCount);
+}
+
+static async Task RestoreAllIndependent()
+{
+    var (adapter, journal, engine) = Fixture(2);
+    var older = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1) };
+    var newer = PendingEntry() with { Status = ChangeStatus.Applied, CreatedAt = DateTimeOffset.UtcNow,
+        Changes = [new("setting-1", SettingValue.DWord(0), SettingValue.DWord(1))] };
+    journal.Entries[older.Id] = older; journal.Entries[newer.Id] = newer;
+    adapter.Values["setting-0"] = SettingValue.DWord(1); adapter.Values["setting-1"] = SettingValue.DWord(1);
+    adapter.BeforeRead = id => { if (id == "setting-1") throw new IOException("temporarily unavailable"); };
+    var result = await engine.RestoreAllAsync();
+    Equal(ChangeStatus.RestoreFailed, result[0].Status); Equal(ChangeStatus.Restored, result[1].Status);
+    Equal(SettingValue.DWord(0), adapter.Values["setting-0"]);
+}
+
+static async Task ExternalOriginal()
+{
+    await InTemporaryDirectory(async directory =>
+    {
+        var adapter = new MemoryAdapter(["setting-0"]);
+        var engine = new OptimizationEngine(adapter, new FileChangeJournal(directory));
+        var record = await engine.ApplyAsync("test");
+        adapter.Values["setting-0"] = SettingValue.DWord(99);
+        adapter.BeforeWrite = (_, _) => True(Directory.EnumerateFiles(directory, "*.external").Any(), "External value must be flushed before forced restoration.");
+        Equal(ChangeStatus.Restored, (await engine.RestoreAsync(record.Id, force: true)).Status);
+        using var envelope = JsonDocument.Parse(await File.ReadAllTextAsync(Directory.EnumerateFiles(directory, "*.external").First()));
+        var saved = JsonSerializer.Deserialize<JournalEntry>(envelope.RootElement.GetProperty("Data").GetString()!)!;
+        Equal(SettingValue.DWord(99), saved.Changes[0].RestoreExpected!);
+    });
+}
+
+static async Task ImmutableOriginal()
+{
+    var path = Path.Combine(Path.GetTempPath(), "Radiant-original-test-" + Guid.NewGuid().ToString("N"));
+    var journal = new FileChangeJournal(path);
+    var entry = PendingEntry();
+    await using (await journal.AcquireAsync(default))
+    {
+        await journal.SaveAsync(entry, default);
+        True(File.Exists(Path.Combine(path, entry.Id + ".original")), "Write-once original must exist.");
+        await Throws<InvalidDataException>(() => journal.SaveAsync(entry with { Changes = [new("setting-0", SettingValue.DWord(55), SettingValue.DWord(1))] }, default));
+        File.Delete(Path.Combine(path, entry.Id + ".json"));
+        var recovered = (await journal.ReadAllAsync(default)).Single();
+        Equal(ChangeStatus.Pending, recovered.Status); Equal(SettingValue.DWord(0), recovered.Changes[0].Before);
+        await journal.SaveAsync(entry, default);
+        File.WriteAllText(Path.Combine(path, entry.Id + ".original"), "corrupt");
+        await Throws<InvalidDataException>(() => journal.ReadAllAsync(default));
+    }
+}
 
 static (MemoryAdapter Adapter, MemoryJournal Journal, OptimizationEngine Engine) Fixture(int count = 1)
 {

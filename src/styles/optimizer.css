@@ -1,11 +1,11 @@
 .optimizer-site {
-  --op-bg: #101310;
-  --op-surface: #191e18;
-  --op-raised: #212820;
-  --op-border: #323a2e;
-  --op-muted: #a1ac99;
-  --op-text: #f0f2eb;
-  --op-lime: #c7f970;
+  --op-bg: #101c2b;
+  --op-surface: #18283d;
+  --op-raised: #233650;
+  --op-border: #35465f;
+  --op-muted: #a7b5c9;
+  --op-text: #e6edf7;
+  --op-lime: #b1c7fc;
   min-height: 100vh;
   overflow: clip;
   color: var(--op-text);

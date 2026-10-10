@@ -6,12 +6,12 @@ namespace Radiant.App;
 
 internal static class Ui
 {
-    public static readonly Brush Background = Brush("#101511");
-    public static readonly Brush Surface = Brush("#19201B");
-    public static readonly Brush BorderColor = Brush("#2E3930");
-    public static readonly Brush Foreground = Brush("#F1F6EF");
-    public static readonly Brush Muted = Brush("#9BAA9B");
-    public static readonly Brush Accent = Brush("#B0F56D");
+    public static readonly Brush Background = Brush("#182234");
+    public static readonly Brush Surface = Brush("#202D41");
+    public static readonly Brush BorderColor = Brush("#354359");
+    public static readonly Brush Foreground = Brush("#E4ECF8");
+    public static readonly Brush Muted = Brush("#A2AFC3");
+    public static readonly Brush Accent = Brush("#B1C7FC");
     public static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
     public static StackPanel Stack(params UIElement[] children)
     {

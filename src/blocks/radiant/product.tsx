@@ -69,18 +69,18 @@ function PreviewHeader() {
   );
 }
 
-function ProductShot({ dark }: { dark: boolean }) {
-  const [screen, setScreen] = useState<'overview' | 'checks' | 'hardware'>(
+function ProductShot() {
+  const [screen, setScreen] = useState<'overview' | 'optimize' | 'recovery'>(
     'overview'
   );
   const [enlarged, setEnlarged] = useState(false);
   const label =
     screen === 'overview'
       ? m['radiant.product.overviewtab']()
-      : screen === 'checks'
-        ? m['radiant.product.gamestab']()
-        : m['radiant.product.hardwaretab']();
-  const src = `/design-preview/radiant-${screen}-${dark ? 'dark' : 'light'}.png?v=0.2.0`;
+      : screen === 'optimize'
+        ? m['radiant.product.optimizetab']()
+        : m['radiant.product.recoverytab']();
+  const src = `/design-preview/radiant-client-${screen}.png?v=0.3.0`;
   return (
     <figure className="pv-product-shot">
       <div className="pv-shot-toolbar">
@@ -95,16 +95,16 @@ function ProductShot({ dark }: { dark: boolean }) {
             {m['radiant.product.overviewtab']()}
           </button>
           <button
-            aria-pressed={screen === 'checks'}
-            onClick={() => setScreen('checks')}
+            aria-pressed={screen === 'optimize'}
+            onClick={() => setScreen('optimize')}
           >
-            {m['radiant.product.gamestab']()}
+            {m['radiant.product.optimizetab']()}
           </button>
           <button
-            aria-pressed={screen === 'hardware'}
-            onClick={() => setScreen('hardware')}
+            aria-pressed={screen === 'recovery'}
+            onClick={() => setScreen('recovery')}
           >
-            {m['radiant.product.hardwaretab']()}
+            {m['radiant.product.recoverytab']()}
           </button>
         </div>
         <button
@@ -123,8 +123,8 @@ function ProductShot({ dark }: { dark: boolean }) {
         <img
           src={src}
           alt={m['radiant.product.imagealt']({ screen: label })}
-          width={1280}
-          height={840}
+          width={1200}
+          height={820}
           fetchPriority="high"
         />
       </button>
@@ -156,8 +156,8 @@ function ProductShot({ dark }: { dark: boolean }) {
           <img
             src={src}
             alt={m['radiant.product.imagealt']({ screen: label })}
-            width={1280}
-            height={840}
+            width={1200}
+            height={820}
           />
         </dialog>
       )}
@@ -165,7 +165,7 @@ function ProductShot({ dark }: { dark: boolean }) {
   );
 }
 
-function ProductHero({ variant }: { variant: PreviewStyle }) {
+function ProductHero() {
   return (
     <section
       className="pv-product-hero pv-width"
@@ -199,7 +199,7 @@ function ProductHero({ variant }: { variant: PreviewStyle }) {
           </p>
         </div>
       </div>
-      <ProductShot dark={variant === 'cinema'} />
+      <ProductShot />
     </section>
   );
 }
@@ -464,7 +464,7 @@ export function ProductPage({ variant }: { variant: PreviewStyle }) {
       </a>
       <PreviewHeader />
       <main>
-        <ProductHero variant={variant} />
+        <ProductHero />
         <ProductFeatures />
         <ProductPlans />
         <ProductDownload />

@@ -4,6 +4,7 @@ export type ProductRelease = {
   downloadUrl: string;
   sha256: string;
   sizeBytes: number;
+  activationAvailable?: boolean;
 };
 
 export type OptimizerCatalog = {

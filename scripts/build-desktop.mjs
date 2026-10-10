@@ -8,7 +8,8 @@ import { preparePresentMon } from './prepare-presentmon.mjs';
 
 if (process.platform !== 'win32')
   throw new Error('This packaging script currently targets Windows x64.');
-const version = '0.2.0';
+const version = '0.3.0';
+const freePreview = process.argv.includes('--free-preview');
 const serverUrl = new URL(
   process.env.OPTIMIZER_DESKTOP_SERVER_URL ||
     process.env.VITE_APP_URL ||
@@ -25,17 +26,24 @@ if (
 const settings = {
   appName: process.env.VITE_APP_NAME || 'Optimizer',
   serverUrl: serverUrl.origin,
-  channel:
-    serverUrl.protocol === 'http:'
+  channel: freePreview
+    ? 'unsigned free preview · activation not configured'
+    : serverUrl.protocol === 'http:'
       ? 'local development preview'
       : 'unsigned preview',
 };
 const output = resolve('artifacts/desktop/win-x64');
 const settingsPath = resolve('desktop/Radiant.App/desktop-settings.local.json');
-let trustedKeys = JSON.parse(process.env.OPTIMIZER_LICENSE_PUBLIC_KEYS || '[]');
+let trustedKeys = freePreview
+  ? []
+  : JSON.parse(process.env.OPTIMIZER_LICENSE_PUBLIC_KEYS || '[]');
 if (!Array.isArray(trustedKeys))
   throw new Error('OPTIMIZER_LICENSE_PUBLIC_KEYS must be a JSON array.');
-if (!trustedKeys.length && process.env.OPTIMIZER_LICENSE_PRIVATE_KEY) {
+if (
+  !freePreview &&
+  !trustedKeys.length &&
+  process.env.OPTIMIZER_LICENSE_PRIVATE_KEY
+) {
   const normalized = process.env.OPTIMIZER_LICENSE_PRIVATE_KEY.replace(
     /-----[^-]+-----/g,
     ''
@@ -75,9 +83,9 @@ for (const key of trustedKeys) {
     );
   seenKeys.add(key.keyId);
 }
-if (!trustedKeys.length)
+if (!trustedKeys.length && !freePreview)
   throw new Error(
-    'Configure trusted public license keys before packaging the client.'
+    'Configure trusted public license keys, or use --free-preview to explicitly build without activation.'
   );
 // Only public SPKI values are embedded in the executable; no secret leaves the build process.
 writeFileSync(
@@ -105,9 +113,25 @@ dotnet([
 ]);
 writeFileSync(
   resolve(output, 'READ-ME.txt'),
-  `${settings.appName} ${version} / Windows x64 preview\n\nExtract this archive, then open Optimizer.exe.\nConfigured website: ${settings.serverUrl}\n\nThis local preview is not code-signed. System and game configuration writes are experimental and disabled until you enable them for the current session.\nBackups and activation data: %LOCALAPPDATA%\\OptimizerPreview\nTo stop using the app, restore any changes you want to undo, close it, and remove the extracted folder. Keep the backup directory until recovery is no longer needed.\n\nGame profiles: supported CS2, Fortnite and VALORANT config formats only. Preview is free; apply requires Premium. Game must be closed. Recovery remains free.\nMonitoring: CPU/RAM, supported Windows GPU counters and NVIDIA NVML sensors. CPU temperature is not collected. PresentMon 2.6.0 reads ETW presentation events for selected processes; permissions and rendering compatibility affect availability. FPS capture/overlay/export requires Premium. Overlay supports windowed/borderless mode, not guaranteed exclusive fullscreen.\nPresentMon is bundled under tools/PresentMon with its MIT license. No service or driver is installed; no game process is injected.\nNVIDIA driver tuning, bandwidth and GPU stress tests remain outside this preview.\n`
+  `${settings.appName} ${version} / Windows x64 preview\n\nExtract this archive, then open Optimizer.exe.\nConfigured website: ${settings.serverUrl}\n\nThis local preview is not code-signed. Interface animation adjustments are opt-in per action. Game preferences, power plans and game configuration writes retain their session opt-in requirements. See WHAT-IS-NEW.txt for the current scope.\nBackups and activation data: %LOCALAPPDATA%\\OptimizerPreview\nTo stop using the app, restore any changes you want to undo, close it, and remove the extracted folder. Keep the backup directory until recovery is no longer needed.\n\nGame profiles: supported CS2, Fortnite and VALORANT config formats only. Preview is free; apply requires Premium. Game must be closed. Recovery remains free.\nMonitoring: CPU/RAM, supported Windows GPU counters and NVIDIA NVML sensors. CPU temperature is not collected. PresentMon 2.6.0 reads ETW presentation events for selected processes; permissions and rendering compatibility affect availability. FPS capture/overlay/export requires Premium. Overlay supports windowed/borderless mode, not guaranteed exclusive fullscreen.\nPresentMon is bundled under tools/PresentMon with its MIT license. No service or driver is installed; no game process is injected.\nNVIDIA driver tuning, bandwidth and GPU stress tests remain outside this preview.\n`
 );
 mkdirSync(resolve('public/downloads'), { recursive: true });
+writeFileSync(
+  resolve(output, 'WHAT-IS-NEW.txt'),
+  `${settings.appName} ${version}
+
+New: Reduce interface animations; instant minimize/restore transitions.
+These use documented Windows interfaces. Each change is optional, backs up the original first, and reads back the Windows result.
+Recovery: Restore all Windows changes in one click, newest first. Conflicting external changes require individual review; failed operations keep their backups.
+Original backups are stored separately from execution status and are retained after restoration. Old 0.2 records remain readable.
+Backups: %LOCALAPPDATA%\\OptimizerPreview\\recovery
+These backups cover recorded settings, not a Windows system image. Game-file backups remain separately listed in Recovery.
+Existing game recording preferences and power-plan changes retain their session opt-in and entitlement requirements.
+No fixed FPS improvement is promised. Native acceptance tested both animation preferences and an installed power-plan switch followed by restoration on the development PC; other Windows configurations may differ.
+
+${freePreview ? 'This free local build has no activation keys. Premium activation is unavailable; free system tools and existing recovery remain usable.' : 'Premium activation uses the licensing service configured in desktop-settings.local.json.'}
+`
+);
 const filename = `optimizer-${version}-win-x64-preview.zip`;
 const archive = resolve('public/downloads', filename);
 // Package an explicit manifest so diagnostic files from a prior local run never
@@ -116,6 +140,7 @@ const releaseFiles = [
   'Optimizer.exe',
   'desktop-settings.local.json',
   'READ-ME.txt',
+  'WHAT-IS-NEW.txt',
   'tools/PresentMon/PresentMon.exe',
   'tools/PresentMon/LICENSE.txt',
 ];
@@ -141,6 +166,7 @@ const release = {
   downloadUrl: `/downloads/${filename}`,
   sha256: hash.digest('hex'),
   sizeBytes: statSync(archive).size,
+  activationAvailable: trustedKeys.length > 0,
 };
 writeFileSync(
   resolve('public/downloads/optimizer-release.json'),

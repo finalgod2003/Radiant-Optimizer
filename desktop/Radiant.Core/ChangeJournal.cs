@@ -21,9 +21,23 @@ public sealed record JournalEntry(
 {
     public ChangeRecord ToRecord() => new(
         Id, TweakId,
-        string.Join("; ", Changes.Select(change => $"{change.SettingId}: {change.Before.ToDisplayString()}")),
-        string.Join("; ", Changes.Select(change => $"{change.SettingId}: {change.After.ToDisplayString()}")),
+        string.Join("; ", Changes.Select(change => Describe(change.SettingId, change.Before))),
+        string.Join("; ", Changes.Select(change => Describe(change.SettingId, change.After))),
         Status, CreatedAt, Error, RestartRequired);
+
+    private static string Describe(string id, SettingValue value) => id switch
+    {
+        "interface.client-animations" => "Interface animations: " + (value.Data == "1" ? "On" : "Off"),
+        "interface.window-animations" => "Window transitions: " + (value.Data == "1" ? "On" : "Off"),
+        "power.active-plan" => "Power plan: " + (value.Data switch
+        {
+            "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" => "High performance",
+            "381b4222-f694-41f0-9685-ff5bb260df2e" => "Balanced",
+            "a1841308-3541-4fab-bc81-f71556f20b4a" => "Power saver",
+            _ => value.Data,
+        }),
+        _ => $"{id}: {value.ToDisplayString()}",
+    };
 
     public void Validate()
     {
@@ -57,7 +71,7 @@ public interface IChangeJournal
 /// A per-user write-ahead journal. A cross-process lock serializes operations;
 /// fsync followed by same-directory replacement keeps earlier backups intact.
 /// </summary>
-public sealed class FileChangeJournal : IChangeJournal
+public sealed partial class FileChangeJournal : IChangeJournal
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string directory;
@@ -101,12 +115,21 @@ public sealed class FileChangeJournal : IChangeJournal
                 entry.Validate();
                 if (!string.Equals(Path.GetFileNameWithoutExtension(file), entry.Id, StringComparison.Ordinal))
                     throw new InvalidDataException("Recovery journal identifier does not match the file name.");
+                var originalPath = Path.Combine(directory, entry.Id + ".original");
+                if (File.Exists(originalPath)) EnsureSameOriginal(await ReadOriginalAsync(originalPath, cancellationToken), entry);
                 entries.Add(entry);
             }
             catch (Exception error) when (error is JsonException or InvalidDataException or NotSupportedException)
             {
                 throw new InvalidDataException($"Cannot read recovery entry {Path.GetFileName(file)}. No new settings will be changed. Keep the journal for recovery.", error);
             }
+        }
+        // A lost status file does not erase the write-once original. Treat it as
+        // interrupted; the engine will inspect Windows without applying anything.
+        foreach (var originalPath in Directory.EnumerateFiles(directory, "*.original"))
+        {
+            var original = await ReadOriginalAsync(originalPath, cancellationToken);
+            if (entries.All(e => e.Id != original.Id)) entries.Add(original with { Status = ChangeStatus.Pending, Error = "Status file missing; original backup retained." });
         }
         return entries.OrderByDescending(entry => entry.CreatedAt).ToArray();
     }
@@ -116,6 +139,8 @@ public sealed class FileChangeJournal : IChangeJournal
         entry.Validate();
         Directory.CreateDirectory(directory);
         var destination = Path.Combine(directory, $"{entry.Id}.json");
+        await EnsureOriginalAsync(entry, destination, cancellationToken);
+        await PreserveExternalAsync(entry, cancellationToken);
         var temporary = Path.Combine(directory, $"{entry.Id}.{Guid.NewGuid():N}.tmp");
         try
         {

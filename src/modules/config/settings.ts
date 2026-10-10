@@ -849,8 +849,9 @@ export function getSettings(): Setting[] {
       name: 'plausible_src',
       title: 'Script Src',
       type: 'text',
-      placeholder: 'https://plausible.example.com/js/pa-XXXXX.js',
-      tip: 'Paste the complete site-specific script URL from Plausible, or leave blank to use the legacy cloud script',
+      placeholder:
+        'https://stats.blackholeenglish.com/js/pa-o45fCHNhYkEiUkUL7UY0A.js',
+      tip: 'Paste the complete site-specific pa-*.js URL; the domain is optional for this script',
       group: 'plausible',
       tab: 'analytics',
     },

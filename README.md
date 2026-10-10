@@ -22,6 +22,22 @@ The predev script prepares translations on first boot. Home, game library and ca
 
 Before a production build, configure `VITE_APP_URL` in `.env.production` for correct canonical and sitemap URLs. Configure `AUTH_SECRET` and the database if exposing the template account/admin functionality. The site has not been deployed.
 
+## Analytics
+
+GA4 and self-hosted Plausible scripts are rendered in the HTML head on all pages. Configure them in `/admin/settings` → Analytics, or set these environment fallbacks in `.env.development` / `.env.production`:
+
+```env
+GOOGLE_ANALYTICS_ID=G-YOUR_MEASUREMENT_ID
+PLAUSIBLE_DOMAIN=your-website.com
+PLAUSIBLE_SRC=https://stats.blackholeenglish.com/js/pa-o45fCHNhYkEiUkUL7UY0A.js
+```
+
+Replace the example GA4 ID with your own. Plausible defaults to the self-hosted site-specific script above and includes the `plausible.init()` bootstrap. `PLAUSIBLE_DOMAIN` is optional for this script; if supplied, it is the website registered in Plausible, not `stats.blackholeenglish.com`. Legacy Plausible scripts remain supported and require a domain. GA4 stays disabled until a valid Measurement ID is set.
+
+Database settings take precedence over environment values, including empty values. Restart the server after changing environment variables. Keep GA4 [enhanced measurement for browser history changes](https://developers.google.com/analytics/devguides/collection/ga4/single-page-applications) enabled for page views during client navigation; the Plausible script handles these automatically. Use [Plausible's installation checker](https://plausible.io/docs/plausible-script) and GA4 Realtime / DebugView on the deployed site to verify collection.
+
+The production site at `https://radiantoptimizer.xyz` uses GA4 property `Radiant Optimizer` (`558223260`) and web stream `Radiant Optimizer Web` (`16096123901`), with Measurement ID `G-2ZJTXQ0EZ0`. Keep `GOOGLE_ANALYTICS_ID` set to this value in `.env.production` and `wrangler.jsonc` under `vars`. Leave it unset in local development to keep development visits out of the production reports.
+
 ## What is included
 
 - English at `/`; Chinese at `/zh`.

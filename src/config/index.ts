@@ -80,6 +80,13 @@ export const envConfigs: Record<string, string> = {
   // to them would let the admin "Test" silently pass on the machine's own key.
   replicate_api_token: procEnv.REPLICATE_API_TOKEN ?? '',
 
+  // Analytics — admin settings override these environment fallbacks.
+  google_analytics_id: procEnv.GOOGLE_ANALYTICS_ID ?? '',
+  plausible_domain: procEnv.PLAUSIBLE_DOMAIN ?? '',
+  plausible_src:
+    procEnv.PLAUSIBLE_SRC ??
+    'https://stats.blackholeenglish.com/js/pa-o45fCHNhYkEiUkUL7UY0A.js',
+
   // Locale (public)
   locale: publicEnv('VITE_DEFAULT_LOCALE') ?? 'en',
 };

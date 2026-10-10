@@ -95,15 +95,6 @@ function RootComponent() {
         <SandboxPreviewBridge />
         <Toaster position="top-center" richColors />
         <GoogleOneTap />
-        {analytics?.gaId ? (
-          <GoogleAnalytics measurementId={analytics.gaId} />
-        ) : null}
-        {analytics?.plausibleDomain || analytics?.plausibleSrc ? (
-          <Plausible
-            domain={analytics.plausibleDomain}
-            src={analytics.plausibleSrc || undefined}
-          />
-        ) : null}
         {analytics?.adsenseCode ? <Ads code={analytics.adsenseCode} /> : null}
         <CustomerService
           crispWebsiteId={analytics?.crispWebsiteId || undefined}
@@ -117,10 +108,21 @@ function RootComponent() {
 }
 
 function RootDocument({ children }: { children: ReactNode }) {
+  const analytics = Route.useLoaderData();
+
   return (
     <html lang={getLocale()} suppressHydrationWarning>
       <head>
         <HeadContent />
+        {analytics?.gaId ? (
+          <GoogleAnalytics measurementId={analytics.gaId} />
+        ) : null}
+        {analytics?.plausibleSrc ? (
+          <Plausible
+            domain={analytics.plausibleDomain}
+            src={analytics.plausibleSrc}
+          />
+        ) : null}
       </head>
       <body className="font-sans antialiased">
         {children}

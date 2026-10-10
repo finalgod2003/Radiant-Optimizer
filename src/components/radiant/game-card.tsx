@@ -28,11 +28,10 @@ export function GameArtwork({
         />
       ) : (
         <div className="game-type-art" aria-hidden="true">
-          <span className="art-orbit" />
           <span className="art-cross">+</span>
           <strong>{game.monogram}</strong>
           <span className="art-index">
-            BROWSER EDITION / {game.id.toUpperCase()}
+            {game.id.replaceAll('-', ' ').toUpperCase()}
           </span>
         </div>
       )}

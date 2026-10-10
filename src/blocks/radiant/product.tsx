@@ -1,0 +1,477 @@
+import { useState } from 'react';
+import { games } from '@/data/games';
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  ChevronDown,
+  Download,
+  Expand,
+  Menu,
+  Monitor,
+  X,
+} from 'lucide-react';
+
+import { Link } from '@/core/i18n/navigation';
+import { envConfigs } from '@/config';
+import { m } from '@/paraglide/messages.js';
+import { getLocale, setLocale } from '@/paraglide/runtime.js';
+import { useOptimizerCatalog } from '@/blocks/optimizer/catalog-query';
+
+import '@/styles/design-previews.css';
+
+export type PreviewStyle = 'paper' | 'atlas' | 'cinema';
+
+function PreviewBrand() {
+  return (
+    <a href="#preview-home" className="pv-brand">
+      <span className="pv-brand-mark" aria-hidden="true">
+        {envConfigs.app_name.slice(0, 1).toLowerCase()}.
+      </span>
+      <span>{envConfigs.app_name}</span>
+    </a>
+  );
+}
+
+function PreviewHeader() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <header className="pv-header pv-width">
+      <PreviewBrand />
+      <nav
+        id="product-navigation"
+        className={menuOpen ? 'is-open' : ''}
+        aria-label={m['radiant.nav.menu']()}
+        onClick={() => setMenuOpen(false)}
+      >
+        <Link href="/features">{m['optimizer.nav.features']()}</Link>
+        <Link href="/pricing">{m['optimizer.nav.pricing']()}</Link>
+        <Link href="/games">{m['optimizer.nav.games']()}</Link>
+        <a href="#preview-faq">{m['radiant.product.navfaq']()}</a>
+      </nav>
+      <Link className="pv-header-download" href="/download">
+        {m['optimizer.nav.download']()}
+        <ArrowDown size={15} />
+      </Link>
+      <button
+        className="pv-mobile-menu"
+        aria-controls="product-navigation"
+        aria-expanded={menuOpen}
+        aria-label={
+          menuOpen ? m['radiant.nav.close']() : m['radiant.nav.menu']()
+        }
+        onClick={() => setMenuOpen(!menuOpen)}
+      >
+        {menuOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+    </header>
+  );
+}
+
+function ProductShot({ dark }: { dark: boolean }) {
+  const [screen, setScreen] = useState<'overview' | 'checks' | 'hardware'>(
+    'overview'
+  );
+  const [enlarged, setEnlarged] = useState(false);
+  const label =
+    screen === 'overview'
+      ? m['radiant.product.overviewtab']()
+      : screen === 'checks'
+        ? m['radiant.product.gamestab']()
+        : m['radiant.product.hardwaretab']();
+  const src = `/design-preview/radiant-${screen}-${dark ? 'dark' : 'light'}.png?v=0.2.0`;
+  return (
+    <figure className="pv-product-shot">
+      <div className="pv-shot-toolbar">
+        <div
+          className="pv-shot-options"
+          aria-label={m['radiant.product.platform']()}
+        >
+          <button
+            aria-pressed={screen === 'overview'}
+            onClick={() => setScreen('overview')}
+          >
+            {m['radiant.product.overviewtab']()}
+          </button>
+          <button
+            aria-pressed={screen === 'checks'}
+            onClick={() => setScreen('checks')}
+          >
+            {m['radiant.product.gamestab']()}
+          </button>
+          <button
+            aria-pressed={screen === 'hardware'}
+            onClick={() => setScreen('hardware')}
+          >
+            {m['radiant.product.hardwaretab']()}
+          </button>
+        </div>
+        <button
+          className="pv-expand"
+          onClick={() => setEnlarged(true)}
+          aria-label={m['radiant.product.enlarge']()}
+        >
+          <Expand size={16} />
+        </button>
+      </div>
+      <button
+        className="pv-shot-image"
+        onClick={() => setEnlarged(true)}
+        aria-label={m['radiant.product.enlarge']()}
+      >
+        <img
+          src={src}
+          alt={m['radiant.product.imagealt']({ screen: label })}
+          width={1280}
+          height={840}
+          fetchPriority="high"
+        />
+      </button>
+      <figcaption>
+        <span>{m['radiant.product.reference']()}</span>
+      </figcaption>
+      {enlarged && (
+        <dialog
+          className="pv-image-dialog"
+          aria-label={m['radiant.product.enlarge']()}
+          ref={(element) => {
+            if (element && !element.open) element.showModal();
+          }}
+          onCancel={() => setEnlarged(false)}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setEnlarged(false);
+          }}
+        >
+          <div className="pv-image-dialog-head">
+            <p>{m['radiant.product.reference']()}</p>
+            <button
+              autoFocus
+              onClick={() => setEnlarged(false)}
+              aria-label={m['radiant.product.close']()}
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <img
+            src={src}
+            alt={m['radiant.product.imagealt']({ screen: label })}
+            width={1280}
+            height={840}
+          />
+        </dialog>
+      )}
+    </figure>
+  );
+}
+
+function ProductHero({ variant }: { variant: PreviewStyle }) {
+  return (
+    <section
+      className="pv-product-hero pv-width"
+      aria-labelledby="preview-title"
+    >
+      <div className="pv-hero-copy">
+        <div className="pv-hero-heading">
+          <p className="pv-eyebrow">{m['optimizer.hero.eyebrow']()}</p>
+          <h1 id="preview-title">{envConfigs.app_name}</h1>
+        </div>
+        <div className="pv-hero-details">
+          <p className="pv-tagline">{m['optimizer.hero.title']()}</p>
+          <p className="pv-hero-description">
+            {m['optimizer.hero.description']()}
+          </p>
+          <div className="pv-hero-actions">
+            <Link className="pv-primary" href="/download">
+              <Download size={17} />
+              {m['optimizer.hero.download']()}
+            </Link>
+            <Link className="pv-text-link" href="/features">
+              {m['optimizer.hero.features']()}
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+          <p className="pv-platform">
+            <Monitor size={14} />
+            {m['radiant.product.platform']()}
+            <span aria-hidden="true">/</span>
+            {m['optimizer.hero.restore']()}
+          </p>
+        </div>
+      </div>
+      <ProductShot dark={variant === 'cinema'} />
+    </section>
+  );
+}
+
+function ProductFeatures() {
+  const features = [
+    {
+      title: m['optimizer.feature.hardware.title'](),
+      description: m['optimizer.feature.hardware.description'](),
+      items: [
+        m['optimizer.feature.hardware.detail'](),
+        m['optimizer.pricing.free.diagnostics'](),
+      ],
+    },
+    {
+      title: m['optimizer.feature.games.title'](),
+      description: m['optimizer.feature.games.description'](),
+      items: [
+        m['optimizer.feature.games.detail'](),
+        m['optimizer.feature.restore.title'](),
+      ],
+    },
+    {
+      title: m['optimizer.feature.monitoring.title'](),
+      description: m['optimizer.feature.monitoring.description'](),
+      items: [
+        m['optimizer.feature.monitoring.detail'](),
+        m['optimizer.pricing.premium.capture'](),
+      ],
+    },
+  ];
+  return (
+    <section className="pv-features pv-width pv-section" id="preview-features">
+      <div className="pv-section-heading">
+        <div>
+          <p className="pv-eyebrow">{m['optimizer.home.features_eyebrow']()}</p>
+          <h2>{m['optimizer.home.features_title']()}</h2>
+        </div>
+        <p>{m['optimizer.home.features_description']()}</p>
+      </div>
+      <div className="pv-feature-list">
+        {features.map((feature, index) => (
+          <article key={feature.title} className="pv-feature">
+            <span className="pv-feature-index" aria-hidden="true">
+              0{index + 1}
+            </span>
+            <h3>{feature.title}</h3>
+            <p>{feature.description}</p>
+            <ul>
+              {feature.items.map((item) => (
+                <li key={item}>
+                  <Check size={14} />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProductPlans() {
+  const catalog = useOptimizerCatalog();
+  const price = catalog.data
+    ? new Intl.NumberFormat(getLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+        style: 'currency',
+        currency: catalog.data.currency.toUpperCase(),
+      }).format(catalog.data.priceInCents / 100)
+    : '—';
+  const plans = [
+    {
+      id: 'free',
+      name: m['optimizer.pricing.free.name'](),
+      price: m['optimizer.pricing.free.price'](),
+      description: m['optimizer.pricing.free.description'](),
+      items: [
+        m['optimizer.pricing.free.hardware'](),
+        m['optimizer.pricing.free.preview'](),
+        m['optimizer.pricing.free.restore'](),
+      ],
+      action: m['optimizer.hero.download'](),
+      href: '/download',
+    },
+    {
+      id: 'premium',
+      name: m['optimizer.pricing.premium.name'](),
+      price,
+      description: m['optimizer.pricing.premium.description'](),
+      items: [
+        m['optimizer.pricing.premium.free'](),
+        m['optimizer.pricing.premium.games'](),
+        m['optimizer.pricing.premium.capture'](),
+      ],
+      action: m['optimizer.home.compare'](),
+      href: '/pricing',
+    },
+  ] as const;
+  return (
+    <section className="pv-plans" id="preview-plans">
+      <div className="pv-width pv-section">
+        <div className="pv-section-heading">
+          <div>
+            <p className="pv-eyebrow">{m['optimizer.pricing.eyebrow']()}</p>
+            <h2>{m['optimizer.pricing.title']()}</h2>
+          </div>
+          <p>{m['optimizer.pricing.description']()}</p>
+        </div>
+        <div className="pv-plan-grid">
+          {plans.map((plan) => (
+            <article key={plan.id} className={`pv-plan pv-plan-${plan.id}`}>
+              <div className="pv-plan-intro">
+                <div>
+                  <h3>{plan.name}</h3>
+                  <p>{plan.description}</p>
+                </div>
+                <span className="pv-plan-price">{plan.price}</span>
+              </div>
+              <ul>
+                {plan.items.map((item) => (
+                  <li key={item}>
+                    <Check size={16} />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                className={plan.id === 'premium' ? 'pv-primary' : 'pv-outline'}
+                href={plan.href}
+              >
+                {plan.action}
+                <ArrowRight size={17} />
+              </Link>
+            </article>
+          ))}
+        </div>
+        <p className="pv-plan-note">{m['optimizer.pricing.restore_note']()}</p>
+      </div>
+    </section>
+  );
+}
+
+function ProductDownload() {
+  return (
+    <section className="pv-download pv-width" id="preview-download">
+      <div>
+        <p className="pv-eyebrow">{m['radiant.product.platform']()}</p>
+        <h2>
+          {m['radiant.product.downloadtitle']({ product: envConfigs.app_name })}
+        </h2>
+        <p>{m['optimizer.download.description']()}</p>
+      </div>
+      <div className="pv-download-action">
+        <Link className="pv-primary" href="/download">
+          <Download size={18} />
+          {m['optimizer.hero.download']()}
+        </Link>
+        <p>{m['optimizer.download.package_description']()}</p>
+      </div>
+    </section>
+  );
+}
+
+function ProductFaq() {
+  const questions = [
+    [m['optimizer.faq.browser.q'](), m['optimizer.faq.browser.a']()],
+    [m['optimizer.faq.premium.q'](), m['optimizer.faq.premium.a']()],
+    [m['optimizer.faq.games.q'](), m['optimizer.faq.games.a']()],
+    [m['optimizer.faq.performance.q'](), m['optimizer.faq.performance.a']()],
+  ];
+  return (
+    <section className="pv-faq pv-width pv-section" id="preview-faq">
+      <h2>{m['radiant.product.faqtitle']()}</h2>
+      <div>
+        {questions.map(([question, answer]) => (
+          <details key={question}>
+            <summary>
+              {question}
+              <ChevronDown size={17} />
+            </summary>
+            <p>{answer}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BrowserGames() {
+  const featured = [games[0], games[2], games[4]];
+  return (
+    <section className="pv-games" id="preview-games">
+      <div className="pv-width pv-section">
+        <div className="pv-games-heading">
+          <div>
+            <p className="pv-eyebrow">{m['radiant.product.gameskicker']()}</p>
+            <h2>{m['radiant.product.gamestitlehome']()}</h2>
+          </div>
+          <p>{m['radiant.product.gamesintro']()}</p>
+        </div>
+        <div className="pv-game-links">
+          {featured.map((game) => (
+            <Link key={game.id} href={`/games/${game.id}`}>
+              <img
+                src={game.image}
+                alt=""
+                width={168}
+                height={112}
+                loading="lazy"
+              />
+              <div>
+                <h3>{game.title}</h3>
+                <span>
+                  {m['radiant.product.gameaction']()}
+                  <ArrowUpRight size={14} />
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+        <Link href="/games" className="pv-text-link pv-browse-games">
+          {m['radiant.product.browsegames']()} <ArrowRight size={16} />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function PreviewFooter() {
+  return (
+    <footer className="pv-footer pv-width">
+      <div>
+        <PreviewBrand />
+        <p>{m['optimizer.footer.description']()}</p>
+      </div>
+      <nav aria-label={m['optimizer.footer.description']()}>
+        <Link href="/features">{m['optimizer.nav.features']()}</Link>
+        <Link href="/pricing">{m['optimizer.nav.pricing']()}</Link>
+        <Link href="/download">
+          {m['optimizer.nav.download']()}
+          <ArrowDown size={14} />
+        </Link>
+        <Link href="/settings/licenses">{m['optimizer.nav.account']()}</Link>
+        <Link href="/activate-device">{m['optimizer.nav.activate']()}</Link>
+        <Link href="/tools">{m['optimizer.nav.tools']()}</Link>
+        <Link href="/privacy-policy">{m['optimizer.footer.privacy']()}</Link>
+        <Link href="/terms-of-service">{m['optimizer.footer.terms']()}</Link>
+        <button onClick={() => setLocale(getLocale() === 'en' ? 'zh' : 'en')}>
+          {m['optimizer.nav.switch_locale']()}
+        </button>
+      </nav>
+    </footer>
+  );
+}
+
+export function ProductPage({ variant }: { variant: PreviewStyle }) {
+  return (
+    <div className={`preview-site pv-${variant}`} id="preview-home">
+      <a className="pv-skip" href="#preview-title">
+        {m['radiant.nav.skip']()}
+      </a>
+      <PreviewHeader />
+      <main>
+        <ProductHero variant={variant} />
+        <ProductFeatures />
+        <ProductPlans />
+        <ProductDownload />
+        <ProductFaq />
+        <BrowserGames />
+      </main>
+      <PreviewFooter />
+    </div>
+  );
+}

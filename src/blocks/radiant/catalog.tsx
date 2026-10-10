@@ -64,9 +64,6 @@ export function GameCatalog() {
             placeholder={m['radiant.catalog.search']()}
             aria-label={m['radiant.catalog.searchlabel']()}
           />
-          <span className="search-key" aria-hidden="true">
-            ⌕
-          </span>
         </label>
       </div>
       <div className="catalog-toolbar">

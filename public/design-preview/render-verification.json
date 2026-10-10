@@ -1,0 +1,14 @@
+{
+  "originalWpfViews": true,
+  "capturedFromRealHardware": true,
+  "containsPrivateDeviceIdentifiers": false,
+  "views": [
+    "Overview / Light",
+    "System checks / Light",
+    "Overview / Dark",
+    "System checks / Dark"
+  ],
+  "navigationVerified": true,
+  "liveRefreshVerified": true,
+  "checkCount": 5
+}

@@ -28,6 +28,13 @@ wrangler.jsonc
 # production
 /build
 
+# Local Windows client toolchain and generated packages
+/.tools/
+/artifacts/
+/public/downloads/
+/desktop/**/bin/
+/desktop/**/obj/
+
 # deploy
 .vercel
 

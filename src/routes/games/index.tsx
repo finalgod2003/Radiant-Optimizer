@@ -2,22 +2,22 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
 import { m } from '@/paraglide/messages.js';
-import { getLocale } from '@/paraglide/runtime.js';
-import { OptimizerGames } from '@/blocks/optimizer/libraries';
-import { optimizerMetadata } from '@/blocks/optimizer/metadata';
+import { getLocale, localizeUrl } from '@/paraglide/runtime.js';
+import { RadiantGames } from '@/blocks/radiant/games';
 
 export const Route = createFileRoute('/games/')({
-  loader: () => {
-    const locale = getLocale();
-    return {
-      locale,
-      title: m['optimizer.meta.games_title'](
-        { name: envConfigs.app_name },
-        { locale }
-      ),
-      description: m['optimizer.meta.games_description']({}, { locale }),
-    };
-  },
-  head: ({ loaderData }) => optimizerMetadata(loaderData, '/games'),
-  component: OptimizerGames,
+  loader: () => ({
+    title: `${m['radiant.product.navgames']({}, { locale: getLocale() })} | ${envConfigs.app_name}`,
+    description: m['radiant.games.description']({}, { locale: getLocale() }),
+    url: localizeUrl(`${envConfigs.app_url}/games`, { locale: getLocale() })
+      .href,
+  }),
+  head: ({ loaderData }) => ({
+    meta: [
+      { title: loaderData?.title },
+      { name: 'description', content: loaderData?.description },
+    ],
+    links: [{ rel: 'canonical', href: loaderData?.url }],
+  }),
+  component: RadiantGames,
 });

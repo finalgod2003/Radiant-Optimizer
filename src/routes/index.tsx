@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { envConfigs } from '@/config';
 import { m } from '@/paraglide/messages.js';
 import { getLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
-import { OptimizerHome } from '@/blocks/optimizer/home';
+import { RadiantHome } from '@/blocks/radiant/home';
 
 export const Route = createFileRoute('/')({
   loader: () => {
@@ -31,8 +31,13 @@ export const Route = createFileRoute('/')({
         { property: 'og:description', content: description },
         { property: 'og:type', content: 'website' },
         { property: 'og:url', content: urlFor(locale) },
-        { name: 'twitter:card', content: 'summary' },
-        { name: 'theme-color', content: '#111311' },
+        {
+          property: 'og:image',
+          content:
+            envConfigs.app_url + '/design-preview/radiant-overview-dark.png',
+        },
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'theme-color', content: '#101c2b' },
       ],
       links: [
         { rel: 'canonical', href: urlFor(locale) },
@@ -45,5 +50,5 @@ export const Route = createFileRoute('/')({
       ],
     };
   },
-  component: OptimizerHome,
+  component: RadiantHome,
 });

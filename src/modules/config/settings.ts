@@ -88,6 +88,13 @@ export function getSettingGroups(): SettingGroup[] {
 
     // Payment
     {
+      name: 'waffo',
+      title: 'Waffo Pancake',
+      description:
+        'Optimizer lifetime payments. Create a one-time USD product and configure /api/payment/notify/waffo for order.completed and refund.succeeded.',
+      tab: 'payment',
+    },
+    {
       name: 'basic_payment',
       title: 'Basic',
       description: 'Payment general settings',
@@ -396,12 +403,75 @@ export function getSettings(): Setting[] {
       type: 'select',
       options: [
         { label: 'Stripe', value: 'stripe' },
+        { label: 'Waffo Pancake', value: 'waffo' },
         { label: 'Creem', value: 'creem' },
         { label: 'PayPal', value: 'paypal' },
         { label: 'Alipay', value: 'alipay' },
         { label: 'WeChat Pay', value: 'wechat' },
       ],
       group: 'basic_payment',
+      tab: 'payment',
+    },
+
+    // ─── Payment / Waffo Pancake ─────────────────────────────────────
+    {
+      name: 'waffo_enabled',
+      title: 'Enable Waffo Pancake',
+      type: 'switch',
+      group: 'waffo',
+      tab: 'payment',
+      defaultValue: 'false',
+    },
+    {
+      name: 'waffo_environment',
+      title: 'Environment',
+      type: 'select',
+      options: [
+        { label: 'Test', value: 'test' },
+        { label: 'Production', value: 'prod' },
+      ],
+      group: 'waffo',
+      tab: 'payment',
+      defaultValue: 'test',
+    },
+    {
+      name: 'waffo_merchant_id',
+      title: 'Merchant ID',
+      type: 'text',
+      placeholder: 'MER_...',
+      group: 'waffo',
+      tab: 'payment',
+    },
+    {
+      name: 'waffo_store_id',
+      title: 'Store ID',
+      type: 'text',
+      placeholder: 'STO_...',
+      group: 'waffo',
+      tab: 'payment',
+    },
+    {
+      name: 'waffo_product_id',
+      title: 'Optimizer one-time product ID (USD 19.90)',
+      type: 'text',
+      placeholder: 'PROD_...',
+      group: 'waffo',
+      tab: 'payment',
+    },
+    {
+      name: 'waffo_private_key',
+      title: 'Merchant RSA private key',
+      type: 'textarea',
+      placeholder: 'RSA private key (Base64 or PEM)',
+      group: 'waffo',
+      tab: 'payment',
+    },
+    {
+      name: 'waffo_webhook_public_key',
+      title: 'Webhook public key (match the environment)',
+      type: 'textarea',
+      placeholder: 'Webhook public key (Base64 or PEM)',
+      group: 'waffo',
       tab: 'payment',
     },
 

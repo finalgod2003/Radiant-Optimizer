@@ -27,8 +27,6 @@ import {
   DEVICE_GRANT_SECONDS,
   DEVICE_POLL_SECONDS,
   licenseSigningConfig,
-  OPTIMIZER_CURRENCY,
-  OPTIMIZER_PRICE_IN_CENTS,
   OPTIMIZER_PRODUCT_ID,
 } from '@/config/optimizer';
 import { getUuid } from '@/lib/hash';
@@ -38,6 +36,7 @@ import type {
   DesktopStartResponse,
   LicenseSummary,
 } from '@/lib/optimizer-contracts';
+import { hasOptimizerPaymentProof } from '@/lib/optimizer-payment-proof';
 
 import { publicSigningKeys, randomToken, signLease, tokenHash } from './crypto';
 
@@ -52,34 +51,17 @@ export class LicenseError extends Error {
 
 /** Reject discounted/mismatched/unverified orders even if another caller marked them paid. */
 export function isEligibleOptimizerOrder(paid: Order): boolean {
-  if (
-    paid.productId !== OPTIMIZER_PRODUCT_ID ||
-    paid.status !== 'paid' ||
-    paid.deletedAt ||
-    paid.paymentProvider !== 'stripe' ||
-    paid.paymentType !== 'one-time' ||
-    paid.amount !== OPTIMIZER_PRICE_IN_CENTS ||
-    paid.currency.toLowerCase() !== OPTIMIZER_CURRENCY ||
-    paid.paymentAmount !== paid.amount ||
-    paid.paymentCurrency?.toLowerCase() !== paid.currency.toLowerCase()
-  )
-    return false;
+  if (paid.status !== 'paid' || paid.deletedAt) return false;
   try {
-    const result = JSON.parse(paid.paymentResult || '{}');
-    const checkout = JSON.parse(paid.checkoutResult || '{}');
-    return (
-      result.id === paid.paymentSessionId &&
-      result.payment_status === 'paid' &&
-      result.mode === 'payment' &&
-      result.amount_total === paid.amount &&
-      result.amount_subtotal === paid.amount &&
-      result.currency === paid.currency &&
-      typeof result.livemode === 'boolean' &&
-      result.livemode === checkout.livemode &&
-      result.metadata?.productId === OPTIMIZER_PRODUCT_ID &&
-      result.metadata?.orderNo === paid.orderNo &&
-      (result.total_details?.amount_discount ?? 0) === 0 &&
-      (result.total_details?.amount_tax ?? 0) === 0
+    return hasOptimizerPaymentProof(
+      paid,
+      JSON.parse(paid.paymentResult || '{}'),
+      {
+        paymentAmount: paid.paymentAmount ?? 0,
+        paymentCurrency: paid.paymentCurrency || '',
+        transactionId: paid.transactionId || undefined,
+      },
+      paid.paymentProvider
     );
   } catch {
     return false;

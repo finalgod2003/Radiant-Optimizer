@@ -82,6 +82,11 @@ export function OptimizerDownload() {
                   {m['optimizer.download.free_build']()}
                 </p>
               )}
+              {release.activationAvailable === true && (
+                <p className="op-notice">
+                  {m['optimizer.download.activation_ready']()}
+                </p>
+              )}
               <a
                 className="op-button"
                 href={release.downloadUrl}

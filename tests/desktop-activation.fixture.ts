@@ -44,7 +44,8 @@ export async function createDesktopActivationFixture(serverUrl: string) {
   const { db } = await import('../src/core/db');
   const schema = await import('../src/config/db/schema');
   const { licenses } = await import('../src/modules/licenses/service');
-  const { OPTIMIZER_PRODUCT_ID } = await import('../src/config/optimizer');
+  const { OPTIMIZER_PRODUCT_ID, OPTIMIZER_PRICE_IN_CENTS } =
+    await import('../src/config/optimizer');
   const database = db();
   const runId = randomUUID();
   const accounts: { id: string; email: string; password: string }[] = [];
@@ -160,8 +161,8 @@ export async function createDesktopActivationFixture(serverUrl: string) {
       mode: 'payment',
       status: 'complete',
       payment_status: 'paid',
-      amount_total: 5777,
-      amount_subtotal: 5777,
+      amount_total: OPTIMIZER_PRICE_IN_CENTS,
+      amount_subtotal: OPTIMIZER_PRICE_IN_CENTS,
       currency: 'usd',
       livemode: false,
       total_details: { amount_discount: 0, amount_tax: 0 },
@@ -179,7 +180,7 @@ export async function createDesktopActivationFixture(serverUrl: string) {
       userId: accounts[0].id,
       userEmail: accounts[0].email,
       status: 'paid',
-      amount: 5777,
+      amount: OPTIMIZER_PRICE_IN_CENTS,
       currency: 'usd',
       productId: OPTIMIZER_PRODUCT_ID,
       paymentType: 'one-time',
@@ -189,7 +190,7 @@ export async function createDesktopActivationFixture(serverUrl: string) {
       checkoutInfo: '{}',
       checkoutResult: JSON.stringify({ id: paymentSessionId, livemode: false }),
       paymentResult: JSON.stringify(result),
-      paymentAmount: 5777,
+      paymentAmount: OPTIMIZER_PRICE_IN_CENTS,
       paymentCurrency: 'usd',
       paidAt: new Date(),
       description: 'LOCAL INTEGRATION FIXTURE — no real payment',

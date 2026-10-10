@@ -3,6 +3,7 @@ import {
   createPublicKey,
   generateKeyPairSync,
   randomUUID,
+  sign,
   verify,
 } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -29,17 +30,23 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
   const { createLicenseService, isEligibleOptimizerOrder } =
     await import('../src/modules/licenses/service');
   const {
+    createCheckout,
+    handleWebhook,
     handleCheckoutSuccess,
     handlePaymentRefund,
     validateOptimizerPayment,
   } = await import('../src/modules/payment/service');
+  const { saveConfigs } = await import('../src/modules/config/service');
   const { StripeProvider } = await import('../src/core/payment/stripe');
+  const { WaffoProvider } = await import('../src/core/payment/waffo');
   const { PaymentStatus } = await import('../src/core/payment/types');
   const {
     OPTIMIZER_PRODUCT_ID,
+    OPTIMIZER_PRICE_IN_CENTS,
     optimizerCheckoutEnabled,
     validateOptimizerRelease,
   } = await import('../src/config/optimizer');
+  const currentPrice = (OPTIMIZER_PRICE_IN_CENTS / 100).toFixed(2);
   const database = db();
   const before = await generateSQLiteDrizzleJson({});
   const after = await generateSQLiteDrizzleJson(schema);
@@ -67,7 +74,7 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
     { id: other, name: 'Other user', email: 'test-other@example.invalid' },
   ]);
 
-  function checkoutResult(id: string) {
+  function checkoutResult(id: string, amount = OPTIMIZER_PRICE_IN_CENTS) {
     return {
       object: 'checkout.session',
       id: `cs_${id}`,
@@ -75,8 +82,8 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
       mode: 'payment',
       status: 'complete',
       payment_status: 'paid',
-      amount_subtotal: 5777,
-      amount_total: 5777,
+      amount_subtotal: amount,
+      amount_total: amount,
       currency: 'usd',
       livemode: false,
       total_details: { amount_discount: 0, amount_tax: 0 },
@@ -88,15 +95,15 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
     };
   }
 
-  async function purchase(status = 'paid') {
+  async function purchase(status = 'paid', amount = OPTIMIZER_PRICE_IN_CENTS) {
     const id = randomUUID();
-    const result = checkoutResult(id);
+    const result = checkoutResult(id, amount);
     const values: NewOrder = {
       id,
       orderNo: `ORD_${id}`,
       userId: buyer,
       status,
-      amount: 5777,
+      amount,
       currency: 'usd',
       productId: OPTIMIZER_PRODUCT_ID,
       paymentType: 'one-time',
@@ -106,7 +113,7 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
       checkoutInfo: '{}',
       checkoutResult: JSON.stringify({ id: result.id, livemode: false }),
       paymentResult: JSON.stringify(result),
-      paymentAmount: 5777,
+      paymentAmount: amount,
       paymentCurrency: 'usd',
       paidAt: new Date(timestamp),
     };
@@ -122,7 +129,7 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
         provider: 'stripe',
         paymentStatus: PaymentStatus.SUCCESS,
         paymentInfo: {
-          paymentAmount: 5777,
+          paymentAmount: amount,
           paymentCurrency: 'usd',
           transactionId: result.payment_intent,
         },
@@ -143,7 +150,442 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
     return polled as Extract<DesktopPollResponse, { status: 'approved' }>;
   }
 
+  const waffoKey = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  const waffo = new WaffoProvider({
+    merchantId: 'MER_integration',
+    storeId: 'STO_integration',
+    productId: 'PROD_integration',
+    privateKey: waffoKey.privateKey,
+    webhookPublicKey: waffoKey.publicKey,
+    environment: 'test',
+  });
+
+  async function waffoPurchase(amount = OPTIMIZER_PRICE_IN_CENTS) {
+    const id = randomUUID();
+    const orderNo = `ORD_${id}`;
+    const event = {
+      id: `PAY_${id.replaceAll('-', '')}`,
+      eventId: `PAY_${id.replaceAll('-', '')}`,
+      timestamp: new Date().toISOString(),
+      eventType: 'order.completed',
+      storeId: 'STO_integration',
+      mode: 'test',
+      data: {
+        orderId: `ORD_${id.replaceAll('-', '')}`,
+        orderStatus: 'completed',
+        paymentId: `PAY_${id.replaceAll('-', '')}`,
+        paymentStatus: 'succeeded',
+        paymentDate: new Date().toISOString().slice(0, 10),
+        buyerEmail: 'test-buyer@example.invalid',
+        currency: 'USD',
+        chargedAmount: (amount / 100).toFixed(2),
+        listPrice: {
+          total: (amount / 100).toFixed(2),
+          subtotal: (amount / 100).toFixed(2),
+          taxAmount: '0.00',
+        },
+        orderMerchantExternalId: orderNo,
+        orderMetadata: {
+          orderNo,
+          userId: buyer,
+          productId: OPTIMIZER_PRODUCT_ID,
+          waffoProductId: 'PROD_integration',
+          licenseProduct: 'true',
+        },
+      },
+    };
+    await database.insert(schema.order).values({
+      id,
+      orderNo,
+      userId: buyer,
+      status: 'created',
+      amount,
+      currency: 'usd',
+      productId: OPTIMIZER_PRODUCT_ID,
+      paymentType: 'one-time',
+      paymentProvider: 'waffo',
+      paymentProductId: 'PROD_integration',
+      paymentSessionId: orderNo,
+      checkoutInfo: '{}',
+      checkoutResult: JSON.stringify({
+        sessionId: `cs_${id}`,
+        orderNo,
+        mode: 'test',
+        storeId: 'STO_integration',
+        productId: 'PROD_integration',
+      }),
+    });
+    const [row]: Order[] = await database
+      .select()
+      .from(schema.order)
+      .where(eq(schema.order.id, id));
+    return { row, event };
+  }
+
+  function waffoRequest(event: unknown) {
+    const body = JSON.stringify(event);
+    const t = Date.now().toString();
+    const signature = sign(
+      'RSA-SHA256',
+      Buffer.from(`${t}.${body}`),
+      waffoKey.privateKey
+    ).toString('base64');
+    return new Request('https://example.invalid/api/payment/notify/waffo', {
+      method: 'POST',
+      body,
+      headers: { 'X-Waffo-Signature': `t=${t},v1=${signature}` },
+    });
+  }
+
+  async function verifiedWaffoEvent(event: unknown) {
+    return waffo.getPaymentEvent({ req: waffoRequest(event) });
+  }
+
+  function waffoRefund(
+    event: Awaited<ReturnType<typeof waffoPurchase>>['event']
+  ) {
+    return {
+      ...event,
+      id: 'REF_integration',
+      eventId: 'REF_integration',
+      eventType: 'refund.succeeded',
+      data: {
+        ...event.data,
+        refundId: 'REF_integration',
+        refundStatus: 'succeeded',
+        refundedAmount: '1.00',
+        originalChargedAmount: event.data.chargedAmount,
+        originalPayment: event.data.listPrice,
+      },
+    };
+  }
+
   try {
+    await t.test(
+      'Waffo checkout and webhook use the shared payment manager and persist correlated orders',
+      async () => {
+        await saveConfigs({
+          app_url: 'https://shop.example.invalid',
+          default_payment_provider: 'waffo',
+          waffo_enabled: 'true',
+          waffo_environment: 'test',
+          waffo_merchant_id: 'MER_integration',
+          waffo_store_id: 'STO_integration',
+          waffo_product_id: 'PROD_integration',
+          waffo_private_key: waffoKey.privateKey,
+          waffo_webhook_public_key: waffoKey.publicKey,
+        });
+        const originalFetch = globalThis.fetch;
+        let payload: Record<string, unknown> = {};
+        try {
+          globalThis.fetch = async (_input, init) => {
+            payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+            return Response.json({
+              data: {
+                sessionId: `cs_${randomUUID()}`,
+                checkoutUrl:
+                  'https://pancake.waffo.ai/store/test/checkout/session',
+              },
+            });
+          };
+          for (const amount of [1, 5777]) {
+            await assert.rejects(
+              createCheckout({
+                userId: buyer,
+                provider: 'waffo',
+                paymentOrder: {
+                  productId: OPTIMIZER_PRODUCT_ID,
+                  type: (await import('../src/core/payment/types')).PaymentType
+                    .ONE_TIME,
+                  price: { amount, currency: 'usd' },
+                },
+              }),
+              /Invalid optimizer checkout configuration/
+            );
+          }
+          const checkout = await createCheckout({
+            userId: buyer,
+            userEmail: 'test-buyer@example.invalid',
+            provider: 'waffo',
+            credits: 0,
+            paymentOrder: {
+              productId: OPTIMIZER_PRODUCT_ID,
+              type: (await import('../src/core/payment/types')).PaymentType
+                .ONE_TIME,
+              price: { amount: OPTIMIZER_PRICE_IN_CENTS, currency: 'usd' },
+              successUrl: 'https://shop.example.invalid/settings/licenses',
+              metadata: {
+                userId: 'untrusted-value',
+                orderNo: 'untrusted-value',
+                productId: 'untrusted-value',
+              },
+            },
+          });
+          const [persisted]: Order[] = await database
+            .select()
+            .from(schema.order)
+            .where(eq(schema.order.orderNo, checkout.checkoutInfo.sessionId));
+          assert.equal(persisted.paymentProvider, 'waffo');
+          assert.equal(persisted.paymentProductId, 'PROD_integration');
+          assert.equal(persisted.amount, OPTIMIZER_PRICE_IN_CENTS);
+          assert.deepEqual(payload.priceSnapshot, {
+            amount: currentPrice,
+            taxIncluded: true,
+            taxCategory: 'digital_goods',
+          });
+          assert.equal(payload.orderMerchantExternalId, persisted.orderNo);
+          const template = await waffoPurchase();
+          const event = {
+            ...template.event,
+            data: {
+              ...template.event.data,
+              orderMerchantExternalId: persisted.orderNo,
+              orderMetadata: payload.metadata,
+            },
+          };
+          const processed = await handleWebhook({
+            req: waffoRequest(event),
+            provider: 'waffo',
+          });
+          assert.deepEqual(processed.orderIds, [persisted.id]);
+          const license = await service.fulfillOrder(persisted.id);
+          assert.ok(license);
+          assert.deepEqual(
+            (
+              await handleWebhook({
+                req: waffoRequest(event),
+                provider: 'waffo',
+              })
+            ).orderIds,
+            [persisted.id]
+          );
+          assert.equal(
+            (await service.fulfillOrder(persisted.id))?.id,
+            license.id
+          );
+
+          const rotated = generateKeyPairSync('rsa', {
+            modulusLength: 2048,
+            publicKeyEncoding: { type: 'spki', format: 'pem' },
+            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+          });
+          await saveConfigs({ waffo_webhook_public_key: rotated.publicKey });
+          await assert.rejects(
+            handleWebhook({ req: waffoRequest(event), provider: 'waffo' }),
+            /signature/
+          );
+        } finally {
+          globalThis.fetch = originalFetch;
+          await saveConfigs({
+            waffo_enabled: 'false',
+            default_payment_provider: 'stripe',
+          });
+        }
+      }
+    );
+
+    await t.test(
+      'invalid Waffo settings do not interrupt verified Stripe events',
+      async () => {
+        const secret = 'whsec_' + randomUUID();
+        await saveConfigs({
+          waffo_enabled: 'true',
+          waffo_private_key: 'invalid-private-key',
+          stripe_secret_key: 'sk_test_integration_placeholder',
+          stripe_signing_secret: secret,
+        });
+        const stripe = new Stripe('sk_test_integration_placeholder');
+        const pending = await purchase('created');
+        const body = JSON.stringify({
+          id: 'evt_' + randomUUID(),
+          object: 'event',
+          type: 'checkout.session.completed',
+          data: { object: pending.result },
+        });
+        const signature = stripe.webhooks.generateTestHeaderString({
+          payload: body,
+          secret,
+        });
+        try {
+          const event = await handleWebhook({
+            provider: 'stripe',
+            req: new Request('https://example.invalid/notify/stripe', {
+              method: 'POST',
+              body,
+              headers: { 'stripe-signature': signature },
+            }),
+          });
+          assert.deepEqual(event.orderIds, [pending.row.id]);
+          assert.ok(await service.fulfillOrder(pending.row.id));
+        } finally {
+          await saveConfigs({ waffo_enabled: 'false' });
+        }
+      }
+    );
+
+    await t.test(
+      'Waffo actual charges remain authoritative without optional price breakdowns',
+      async () => {
+        const pending = await waffoPurchase();
+        const event = {
+          ...pending.event,
+          data: { ...pending.event.data, listPrice: undefined },
+        };
+        await handleCheckoutSuccess(
+          (await verifiedWaffoEvent(event)).paymentSession!,
+          'waffo'
+        );
+        assert.ok(await service.fulfillOrder(pending.row.id));
+        const refund = waffoRefund(pending.event);
+        const withoutBreakdown = {
+          ...refund,
+          data: { ...refund.data, originalPayment: undefined },
+        };
+        assert.deepEqual(
+          await handlePaymentRefund(
+            (await verifiedWaffoEvent(withoutBreakdown)).paymentSession!,
+            'waffo'
+          ),
+          [pending.row.id]
+        );
+      }
+    );
+
+    await t.test(
+      'verified Waffo purchase issues one license and a partial refund revokes it',
+      async () => {
+        const pending = await waffoPurchase();
+        const completed = (await verifiedWaffoEvent(pending.event))
+          .paymentSession!;
+        assert.equal(await service.fulfillOrder(pending.row.id), null);
+        await handleCheckoutSuccess(completed, 'waffo');
+        const license = (await service.fulfillOrder(pending.row.id))!;
+        assert.ok(license);
+        await handleCheckoutSuccess(completed, 'waffo');
+        assert.equal(
+          (await service.fulfillOrder(pending.row.id))!.id,
+          license.id
+        );
+        const active = await activated(license.id);
+        const refund = (await verifiedWaffoEvent(waffoRefund(pending.event)))
+          .paymentSession!;
+        for (const id of await handlePaymentRefund(refund, 'waffo'))
+          await service.revokeOrder(id);
+        await handlePaymentRefund(refund, 'waffo');
+        await handleCheckoutSuccess(completed, 'waffo');
+        assert.equal(await service.fulfillOrder(pending.row.id), null);
+        assert.equal(
+          (await service.list(buyer)).find((item) => item.id === license.id)
+            ?.status,
+          'refunded'
+        );
+        await assert.rejects(service.refresh(active.deviceToken), /revoked/);
+      }
+    );
+
+    await t.test(
+      'Waffo refund before payment confirmation prevents entitlement creation',
+      async () => {
+        const pending = await waffoPurchase();
+        const refund = (await verifiedWaffoEvent(waffoRefund(pending.event)))
+          .paymentSession!;
+        assert.deepEqual(await handlePaymentRefund(refund, 'waffo'), [
+          pending.row.id,
+        ]);
+        await handleCheckoutSuccess(
+          (await verifiedWaffoEvent(pending.event)).paymentSession!,
+          'waffo'
+        );
+        assert.equal(await service.fulfillOrder(pending.row.id), null);
+      }
+    );
+
+    await t.test(
+      'Waffo signed but mismatched payment proof cannot authorize a license',
+      async () => {
+        const pending = await waffoPurchase();
+        const valid = (await verifiedWaffoEvent(pending.event)).paymentSession!;
+        for (const event of [
+          { ...pending.event, mode: 'prod' },
+          { ...pending.event, storeId: 'STO_another' },
+          {
+            ...pending.event,
+            data: { ...pending.event.data, chargedAmount: '0.01' },
+          },
+          {
+            ...pending.event,
+            data: { ...pending.event.data, chargedAmount: undefined },
+          },
+          {
+            ...pending.event,
+            data: { ...pending.event.data, orderMerchantExternalId: 'another' },
+          },
+          {
+            ...pending.event,
+            data: {
+              ...pending.event.data,
+              orderMetadata: {
+                ...pending.event.data.orderMetadata,
+                userId: other,
+              },
+            },
+          },
+          {
+            ...pending.event,
+            data: {
+              ...pending.event.data,
+              orderMetadata: {
+                ...pending.event.data.orderMetadata,
+                waffoProductId: 'PROD_other',
+              },
+            },
+          },
+          {
+            ...pending.event,
+            data: {
+              ...pending.event.data,
+              listPrice: { ...pending.event.data.listPrice, total: '60.00' },
+            },
+          },
+        ]) {
+          const invalid = {
+            ...valid,
+            paymentResult: { id: pending.row.orderNo, event },
+          };
+          assert.throws(
+            () => validateOptimizerPayment(pending.row, invalid, 'waffo'),
+            /authoritative order/
+          );
+          assert.equal(
+            isEligibleOptimizerOrder({
+              ...pending.row,
+              status: 'paid',
+              paymentAmount: OPTIMIZER_PRICE_IN_CENTS,
+              paymentCurrency: 'usd',
+              transactionId: valid.paymentInfo!.transactionId!,
+              paymentResult: JSON.stringify(invalid.paymentResult),
+            }),
+            false
+          );
+        }
+        const wrongRefund = waffoRefund(pending.event);
+        wrongRefund.data.originalChargedAmount = '58.77';
+        await assert.rejects(
+          handlePaymentRefund(
+            (await verifiedWaffoEvent(wrongRefund)).paymentSession!,
+            'waffo'
+          ),
+          /does not match/
+        );
+        await handleCheckoutSuccess(valid, 'waffo');
+        assert.ok(await service.fulfillOrder(pending.row.id));
+      }
+    );
+
     await t.test(
       'unpaid, wrong amount, wrong mode, currency, metadata and discounted orders never issue a license',
       async () => {
@@ -464,7 +906,7 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
             object: {
               id: 'ch_' + randomUUID(),
               object: 'charge',
-              amount: 5777,
+              amount: OPTIMIZER_PRICE_IN_CENTS,
               amount_refunded: 100,
               currency: 'usd',
               livemode: false,
@@ -531,8 +973,8 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
             paymentInfo: pending.session.paymentInfo,
             paymentResult: {
               object: 'charge',
-              amount: 5777,
-              amount_refunded: 5777,
+              amount: OPTIMIZER_PRICE_IN_CENTS,
+              amount_refunded: OPTIMIZER_PRICE_IN_CENTS,
               currency: 'usd',
               livemode: false,
             },
@@ -588,6 +1030,38 @@ test('desktop licensing on a real isolated SQLite database', async (t) => {
             activationAvailable: false,
           })?.activationAvailable,
           false
+        );
+      }
+    );
+
+    await t.test(
+      'repricing keeps previous quotes valid for payment and refund',
+      async () => {
+        const previousStripe = await purchase('created', 5777);
+        await handleCheckoutSuccess(previousStripe.session, 'stripe');
+        assert.ok(await service.fulfillOrder(previousStripe.row.id));
+
+        const previousWaffo = await waffoPurchase(5777);
+        await handleCheckoutSuccess(
+          (await verifiedWaffoEvent(previousWaffo.event)).paymentSession!,
+          'waffo'
+        );
+        const license = (await service.fulfillOrder(previousWaffo.row.id))!;
+        assert.ok(license);
+        const refund = await verifiedWaffoEvent(
+          waffoRefund(previousWaffo.event)
+        );
+        const refunded = await handlePaymentRefund(
+          refund.paymentSession!,
+          'waffo'
+        );
+        assert.deepEqual(refunded, [previousWaffo.row.id]);
+        for (const id of refunded) await service.revokeOrder(id);
+        assert.equal(await service.fulfillOrder(previousWaffo.row.id), null);
+        assert.equal(
+          (await service.list(buyer)).find((item) => item.id === license.id)
+            ?.status,
+          'refunded'
         );
       }
     );

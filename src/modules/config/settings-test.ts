@@ -17,11 +17,16 @@ import {
   CreemProvider,
   PayPalProvider,
   StripeProvider,
+  WaffoProvider,
   WechatPayProvider,
 } from '@/core/payment';
 import { PaymentType, type PaymentOrder } from '@/core/payment/types';
 import { R2Provider } from '@/core/storage/r2';
 import { envConfigs } from '@/config';
+import {
+  OPTIMIZER_CURRENCY,
+  OPTIMIZER_PRICE_IN_CENTS,
+} from '@/config/optimizer';
 import { getUniSeq } from '@/lib/hash';
 
 import type { TestResult } from './settings-test-specs';
@@ -40,6 +45,8 @@ export async function runTest(
         return await testResend(inputs, configs);
       case 'stripe':
         return await testStripe(inputs, configs);
+      case 'waffo':
+        return await testWaffo(configs);
       case 'creem':
         return await testCreem(inputs, configs);
       case 'paypal':
@@ -114,6 +121,40 @@ async function testResend(
 }
 
 // --- Stripe ---------------------------------------------------------------
+
+async function testWaffo(configs: Record<string, string>): Promise<TestResult> {
+  if (configs.waffo_environment !== 'test') {
+    return {
+      success: false,
+      message:
+        'Use the Waffo test environment and its test credentials for this check.',
+    };
+  }
+  const provider = new WaffoProvider({
+    merchantId: configs.waffo_merchant_id || '',
+    privateKey: configs.waffo_private_key || '',
+    storeId: configs.waffo_store_id || '',
+    productId: configs.waffo_product_id || '',
+    webhookPublicKey: configs.waffo_webhook_public_key || '',
+    environment: 'test',
+  });
+  const session = await provider.createPayment({
+    order: {
+      type: PaymentType.ONE_TIME,
+      orderNo: getUniSeq('TEST'),
+      productId: configs.waffo_product_id,
+      price: { amount: OPTIMIZER_PRICE_IN_CENTS, currency: OPTIMIZER_CURRENCY },
+      successUrl: configuredSuccessUrl('waffo', configs),
+      metadata: { settingsTest: 'true' },
+    },
+  });
+  return {
+    success: true,
+    message:
+      'Test checkout created. Complete a test purchase from the pricing page to verify license delivery.',
+    details: { 'Checkout URL': session.checkoutInfo.checkoutUrl },
+  };
+}
 
 async function testStripe(
   inputs: Record<string, string>,

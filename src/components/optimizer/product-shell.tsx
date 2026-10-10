@@ -11,6 +11,7 @@ export function ProductShell({
   children,
   name,
   logo,
+  supportEmail,
   navigation,
   account,
   locale,
@@ -20,6 +21,7 @@ export function ProductShell({
   children: ReactNode;
   name: string;
   logo: string;
+  supportEmail: string;
   navigation: NavigationItem[];
   account: NavigationItem;
   locale: string;
@@ -122,6 +124,7 @@ export function ProductShell({
             </Link>
             <Link href="/privacy-policy">{labels.privacy}</Link>
             <Link href="/terms-of-service">{labels.terms}</Link>
+            <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
           </div>
         </div>
         <div className="op-footer-bottom">

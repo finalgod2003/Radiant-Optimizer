@@ -37,11 +37,15 @@ export function OptimizerLicenses() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<LicenseSummary | null>(null);
+  const [refreshUntil] = useState(() => Date.now() + 120_000);
   const query = useQuery({
     queryKey: ['optimizer-licenses', session?.user.id],
     queryFn: () => apiGet<LicenseSummary[]>('/api/licenses'),
     enabled: !!session?.user,
     retry: 1,
+    // Hosted checkout can return before its verified payment notification arrives.
+    refetchInterval: () => (Date.now() < refreshUntil ? 5_000 : false),
+    refetchIntervalInBackground: false,
   });
   const unbind = useMutation({
     mutationFn: (licenseId: string) =>
@@ -96,6 +100,17 @@ export function OptimizerLicenses() {
           <KeyRound size={36} strokeWidth={1.5} />
           <h2>{m['optimizer.licenses.empty_title']()}</h2>
           <p>{m['optimizer.licenses.empty_description']()}</p>
+          <Button
+            variant="outline"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            <RefreshCw
+              size={14}
+              className={query.isFetching ? 'op-spin' : ''}
+            />
+            {m['optimizer.common.refresh']()}
+          </Button>
           <Link href="/pricing" className={buttonVariants()}>
             {m['optimizer.licenses.view_plans']()}
             <ArrowRight size={15} />

@@ -6,6 +6,7 @@ import {
   CreemProvider,
   PaymentManager,
   StripeProvider,
+  WaffoProvider,
   WechatPayProvider,
 } from '@/core/payment';
 import {
@@ -34,6 +35,10 @@ import {
   type UpdateSubscription,
 } from '@/modules/subscriptions/service';
 import { getSnowId, getUniSeq, getUuid } from '@/lib/hash';
+import {
+  hasOptimizerPaymentProof,
+  hasWaffoRefundProof,
+} from '@/lib/optimizer-payment-proof';
 
 // --- Order types ---
 
@@ -55,25 +60,25 @@ async function getPaymentManager(): Promise<PaymentManager> {
   const c = (key: string) => configs[key] || '';
 
   // Rebuild manager if provider configs changed
-  const hash = JSON.stringify([
-    c('stripe_secret_key') || c('stripe_api_key'),
-    c('creem_enabled'),
-    c('creem_api_key'),
-    c('alipay_app_id'),
-    c('wechat_mch_id'),
-    c('default_payment_provider'),
-  ]);
+  const hash = JSON.stringify(
+    Object.entries(configs)
+      .filter(([key]) =>
+        /^(stripe|creem|alipay|wechat|waffo)_|^default_payment_provider$/.test(
+          key
+        )
+      )
+      .sort(([a], [b]) => a.localeCompare(b))
+  );
   if (manager && hash === managerConfigHash) return manager;
 
-  manager = new PaymentManager();
-  managerConfigHash = hash;
+  const nextManager = new PaymentManager();
 
   const stripeKey = c('stripe_secret_key') || c('stripe_api_key');
   if (stripeKey) {
     const isDefault =
       !c('default_payment_provider') ||
       c('default_payment_provider') === 'stripe';
-    manager.addProvider(
+    nextManager.addProvider(
       new StripeProvider({
         secretKey: stripeKey,
         publishableKey: c('stripe_publishable_key'),
@@ -88,7 +93,7 @@ async function getPaymentManager(): Promise<PaymentManager> {
 
   if (c('creem_enabled') === 'true' && c('creem_api_key')) {
     const isDefault = c('default_payment_provider') === 'creem';
-    manager.addProvider(
+    nextManager.addProvider(
       new CreemProvider({
         apiKey: c('creem_api_key'),
         signingSecret: c('creem_signing_secret') || undefined,
@@ -101,7 +106,7 @@ async function getPaymentManager(): Promise<PaymentManager> {
 
   if (c('alipay_app_id') && c('alipay_private_key')) {
     const isDefault = c('default_payment_provider') === 'alipay';
-    manager.addProvider(
+    nextManager.addProvider(
       new AlipayProvider({
         appId: c('alipay_app_id'),
         privateKey: c('alipay_private_key'),
@@ -114,7 +119,7 @@ async function getPaymentManager(): Promise<PaymentManager> {
 
   if (c('wechat_mch_id') && c('wechat_private_key')) {
     const isDefault = c('default_payment_provider') === 'wechat';
-    manager.addProvider(
+    nextManager.addProvider(
       new WechatPayProvider({
         appId: c('wechat_app_id'),
         mchId: c('wechat_mch_id'),
@@ -128,6 +133,30 @@ async function getPaymentManager(): Promise<PaymentManager> {
     );
   }
 
+  if (c('waffo_enabled') === 'true') {
+    try {
+      nextManager.addProvider(
+        new WaffoProvider({
+          merchantId: c('waffo_merchant_id'),
+          privateKey: c('waffo_private_key'),
+          storeId: c('waffo_store_id'),
+          productId: c('waffo_product_id'),
+          webhookPublicKey: c('waffo_webhook_public_key'),
+          environment: c('waffo_environment') as 'test' | 'prod',
+        }),
+        c('default_payment_provider') === 'waffo'
+      );
+    } catch {
+      // An incomplete Waffo setup must not interrupt other providers' webhooks.
+      // Explicit Waffo lookup still fails; the admin Test action reports details.
+      console.warn(
+        'Waffo payment provider configuration is incomplete or invalid'
+      );
+    }
+  }
+
+  manager = nextManager;
+  managerConfigHash = hash;
   return manager;
 }
 
@@ -163,7 +192,7 @@ export async function createCheckout(params: {
   const isOptimizer = paymentOrder.productId === OPTIMIZER_PRODUCT_ID;
   if (
     isOptimizer &&
-    (resolvedProvider !== 'stripe' ||
+    (!['stripe', 'waffo'].includes(resolvedProvider || '') ||
       paymentOrder.type !== PaymentType.ONE_TIME ||
       paymentOrder.price?.amount !== OPTIMIZER_PRICE_IN_CENTS ||
       paymentOrder.price?.currency !== OPTIMIZER_CURRENCY ||
@@ -172,6 +201,13 @@ export async function createCheckout(params: {
     throw new Error('Invalid optimizer checkout configuration');
   }
   let resolvedProductId = paymentOrder.productId;
+  if (resolvedProvider === 'waffo') {
+    if (!isOptimizer)
+      throw new Error(
+        'Waffo currently supports Optimizer lifetime purchases only'
+      );
+    resolvedProductId = configs.waffo_product_id;
+  }
   if (resolvedProvider === 'creem' && paymentOrder.productId) {
     const mapping = configs.creem_product_ids_mapping;
     if (mapping) {
@@ -198,6 +234,7 @@ export async function createCheckout(params: {
       metadata: {
         ...paymentOrder.metadata,
         orderNo,
+        userId,
         productId: paymentOrder.productId || '',
         ...(isOptimizer ? { licenseProduct: 'true' } : {}),
       },
@@ -205,7 +242,7 @@ export async function createCheckout(params: {
       cancelUrl:
         paymentOrder.cancelUrl || `${appUrl}/settings/billing?canceled=1`,
     },
-    provider,
+    provider: resolvedProvider,
   });
 
   await db()
@@ -225,6 +262,8 @@ export async function createCheckout(params: {
       creditsValidDays: creditsValidDays ?? null,
       paymentType: paymentOrder.type || 'one-time',
       paymentProvider: session.provider,
+      paymentProductId:
+        resolvedProvider === 'waffo' ? resolvedProductId : undefined,
       paymentSessionId: session.checkoutInfo.sessionId,
       checkoutInfo: JSON.stringify(session.checkoutInfo),
       checkoutResult: JSON.stringify(session.checkoutResult),
@@ -492,37 +531,53 @@ export function validateOptimizerPayment(
   session: PaymentSession,
   provider: string
 ) {
-  const result = session.paymentResult || {};
-  const checkout = JSON.parse(existingOrder.checkoutResult || '{}');
   if (
-    provider !== 'stripe' ||
     session.provider !== provider ||
-    existingOrder.amount !== OPTIMIZER_PRICE_IN_CENTS ||
-    existingOrder.currency !== OPTIMIZER_CURRENCY ||
-    session.paymentInfo?.paymentAmount !== existingOrder.amount ||
-    session.paymentInfo.paymentCurrency !== existingOrder.currency ||
-    result.id !== existingOrder.paymentSessionId ||
-    result.mode !== 'payment' ||
-    result.payment_status !== 'paid' ||
-    result.amount_total !== existingOrder.amount ||
-    result.amount_subtotal !== existingOrder.amount ||
-    result.currency !== existingOrder.currency ||
-    typeof result.livemode !== 'boolean' ||
-    result.livemode !== checkout.livemode ||
-    result.metadata?.orderNo !== existingOrder.orderNo ||
-    result.metadata?.productId !== OPTIMIZER_PRODUCT_ID ||
-    (result.total_details?.amount_discount ?? 0) !== 0 ||
-    (result.total_details?.amount_tax ?? 0) !== 0
+    !hasOptimizerPaymentProof(
+      existingOrder,
+      session.paymentResult,
+      session.paymentInfo,
+      provider
+    )
   ) {
     throw new Error('Optimizer payment does not match the authoritative order');
   }
 }
 
-/** Full or partial Stripe refund revokes the single-device entitlement. */
+/** Any verified positive refund revokes the single-device entitlement. */
 export async function handlePaymentRefund(
   session: PaymentSession,
   provider: string
 ): Promise<string[]> {
+  if (provider === 'waffo' && session.provider === 'waffo') {
+    const result = session.paymentResult;
+    if (typeof result?.id !== 'string')
+      throw new Error('Missing Waffo refund order reference');
+    const [candidate]: Order[] = await db()
+      .select()
+      .from(order)
+      .where(
+        and(
+          eq(order.paymentProvider, 'waffo'),
+          eq(order.orderNo, result.id),
+          eq(order.productId, OPTIMIZER_PRODUCT_ID),
+          isNull(order.deletedAt)
+        )
+      )
+      .limit(1);
+    if (!candidate) {
+      if (session.metadata?.licenseProduct === 'true')
+        throw new Error('Refund order is not available yet');
+      return [];
+    }
+    if (!hasWaffoRefundProof(candidate, result))
+      throw new Error('Refund does not match optimizer order');
+    await db()
+      .update(order)
+      .set({ status: OrderStatus.REFUNDED })
+      .where(eq(order.id, candidate.id));
+    return [candidate.id];
+  }
   if (provider !== 'stripe' || session.provider !== 'stripe') return [];
   const result = session.paymentResult;
   if (

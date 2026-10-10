@@ -5,7 +5,7 @@ import type {
 } from '@/lib/optimizer-contracts';
 
 export const OPTIMIZER_PRODUCT_ID = 'optimizer_premium_lifetime';
-export const OPTIMIZER_PRICE_IN_CENTS = 5777;
+export const OPTIMIZER_PRICE_IN_CENTS = 1990;
 export const OPTIMIZER_CURRENCY = 'usd';
 export const DEVICE_GRANT_SECONDS = 300;
 export const DEVICE_POLL_SECONDS = 5;
@@ -29,13 +29,59 @@ export function licenseSigningConfig() {
   };
 }
 
-export function optimizerCheckoutEnabled(config: Record<string, string>) {
+export type OptimizerPaymentProvider = 'stripe' | 'waffo';
+
+export function optimizerPaymentProvider(
+  config: Record<string, string>,
+  requested?: string
+): OptimizerPaymentProvider | null {
+  const defaultProvider = config.default_payment_provider;
+  const selected =
+    requested ||
+    (defaultProvider === 'stripe' || defaultProvider === 'waffo'
+      ? defaultProvider
+      : undefined);
+  const candidates = selected ? [selected] : ['stripe', 'waffo'];
+  for (const provider of candidates) {
+    if (provider === 'waffo') {
+      let httpsOrigin = false;
+      try {
+        httpsOrigin = new URL(config.app_url).protocol === 'https:';
+      } catch {
+        // Waffo's payment channel requires an absolute HTTPS return URL.
+      }
+      if (
+        config.waffo_enabled === 'true' &&
+        /^MER_[A-Za-z0-9]+$/.test(config.waffo_merchant_id || '') &&
+        /^STO_[A-Za-z0-9]+$/.test(config.waffo_store_id || '') &&
+        /^PROD_[A-Za-z0-9]+$/.test(config.waffo_product_id || '') &&
+        config.waffo_private_key &&
+        config.waffo_webhook_public_key &&
+        ['test', 'prod'].includes(config.waffo_environment) &&
+        httpsOrigin
+      )
+        return 'waffo';
+    }
+    if (
+      provider === 'stripe' &&
+      config.stripe_enabled === 'true' &&
+      /^sk_(test|live)_/.test(
+        config.stripe_secret_key || config.stripe_api_key || ''
+      ) &&
+      (config.stripe_signing_secret || config.stripe_webhook_secret)
+    )
+      return 'stripe';
+  }
+  return null;
+}
+
+export function optimizerCheckoutEnabled(
+  config: Record<string, string>,
+  requested?: string
+) {
   const signing = licenseSigningConfig();
-  const stripeKey = config.stripe_secret_key || '';
   return Boolean(
-    config.stripe_enabled === 'true' &&
-    /^sk_(test|live)_/.test(stripeKey) &&
-    (config.stripe_signing_secret || config.stripe_webhook_secret) &&
+    optimizerPaymentProvider(config, requested) &&
     signing.privateKey &&
     signing.keyId
   );

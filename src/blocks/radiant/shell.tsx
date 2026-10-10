@@ -3,6 +3,7 @@ import { ArrowDown, Menu, X } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import { SUPPORT_EMAIL } from '@/config/support';
 import { m } from '@/paraglide/messages.js';
 
 import '@/styles/radiant.css';
@@ -91,6 +92,7 @@ export function RadiantShell({
             <Link href="/">{m['radiant.product.productlink']()}</Link>
             <Link href="/games">{m['radiant.product.navgames']()}</Link>
             <Link href="/download">{m['radiant.product.primary']()}</Link>
+            <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
           </div>
         </div>
         <div className="footer-bottom">

@@ -4,6 +4,7 @@ import { getAuth } from '@/core/auth';
 import {
   OPTIMIZER_PRODUCT_ID,
   optimizerCheckoutEnabled,
+  optimizerPaymentProvider,
 } from '@/config/optimizer';
 import { getPricingProduct } from '@/config/pricing';
 import { getAllConfigs } from '@/modules/config/service';
@@ -49,6 +50,13 @@ async function POST({ request }: { request: Request }) {
     const body = await request.json().catch(() => ({}));
     const { product_id, payment_provider, redirect } = body;
 
+    if (
+      payment_provider !== undefined &&
+      typeof payment_provider !== 'string'
+    ) {
+      return respErr('Invalid payment_provider');
+    }
+
     if (!product_id || typeof product_id !== 'string') {
       return respErr('Missing product_id');
     }
@@ -65,22 +73,18 @@ async function POST({ request }: { request: Request }) {
     // amount stored both come from the authoritative catalog.
     const configs = await getAllConfigs();
     const isOptimizer = product.productId === OPTIMIZER_PRODUCT_ID;
-    if (
-      isOptimizer &&
-      (!optimizerCheckoutEnabled(configs) ||
-        (payment_provider && payment_provider !== 'stripe'))
-    ) {
+    if (isOptimizer && !optimizerCheckoutEnabled(configs, payment_provider)) {
       return respErr('Optimizer checkout is not configured', { status: 503 });
     }
     if (isOptimizer) await licenses.keys();
     const providerKey = isOptimizer
-      ? 'stripe'
+      ? optimizerPaymentProvider(configs, payment_provider)!
       : payment_provider || configs.default_payment_provider;
     const testAmountRaw = providerKey
       ? configs[`${providerKey}_test_amount`]
       : undefined;
     const testAmount = testAmountRaw ? parseInt(testAmountRaw) : 0;
-    // Licenses always use the full catalog price, including Stripe test mode.
+    // Licenses always use the full catalog price, including provider test mode.
     const chargeAmount =
       !isOptimizer && testAmount > 0 ? testAmount : product.priceInCents;
 

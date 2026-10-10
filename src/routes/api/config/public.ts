@@ -24,6 +24,7 @@ const publicKeys = [
   'select_payment_enabled',
   'default_payment_provider',
   'stripe_enabled',
+  'waffo_enabled',
   'creem_enabled',
   'paypal_enabled',
   'alipay_enabled',

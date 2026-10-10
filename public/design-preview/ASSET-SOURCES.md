@@ -1,27 +1,36 @@
 # Original client and homepage views
 
-## Primary client 0.3.0 (current homepage)
+## Primary client 0.4.1 (current homepage)
 
 `radiant-client-overview.png`, `radiant-client-optimize.png`, and
 `radiant-client-recovery.png` are rendered from the primary Windows WPF client
-under `desktop/`, version 0.3.0, at 1200 × 820. The homepage uses these images
+under `desktop/`, version 0.4.1, at 1200 × 820. The homepage uses these images
 with the approved C / Midnight blue palette. No competitor screenshots are used.
 
 The current views use the RO monogram from `public/brand/ro-mark.svg`, rendered
-from the client's visual tree after the logo update. Regenerating these views
-does not apply or restore any settings. See `docs/brand/README.md` for logo assets.
+from the client's visual tree after the logo update. The retained verification
+directory supplies the existing recovery history; regenerating these views does
+not apply or restore any settings. See `docs/brand/README.md` for logo assets.
 
 Overview uses actual sampled hardware information from the development PC, not
-promised results for another machine. Windows settings shows the actual optional
-animation controls. Recovery shows real native acceptance records: all three
-operations were restored and verified. A generic custom-folder label avoids
+promised results for another machine. Game Boost shows the actual gaming and AC
+power-mode controls. Recovery shows real native acceptance records: Gaming
+essentials and AC mode were restored and verified. A generic folder label avoids
 exposing private filesystem paths.
 
+`radiant-client-account.png` shows the same client's enabled device activation
+entry, with a Free installation connected to the local development website.
+It does not depict a purchased or activated account.
+
 Regenerate using the primary `Optimizer.exe --snapshot <image.png> --snapshot-page
-<overview|optimize|recovery> --data-directory <directory>`. This reads and renders
+<overview|optimize|recovery|account> --data-directory <directory>`. This reads and renders
 the app's own visual tree; it does not apply optimization or open a desktop window.
 Use the retained native verification folder for the historical Recovery view.
-See `docs/optimizer-0.3-verification.md` for scope and release limitations.
+See `docs/optimizer-0.4-verification.md` for scope and release limitations.
+
+## Premium controls (0.5.0)
+
+The six `radiant-client-*` images (overview, optimize, games, cpu, recovery, account) were refreshed with our actual 0.5.0 WPF app. CPU and game lists reflect real local detection; no running game or fixture data was inserted into the website captures. Custom profiles and CPU controls are our implementation. Original competitor screenshots remain outside the served site.
 
 ## Archived read-only studies (0.2.0)
 

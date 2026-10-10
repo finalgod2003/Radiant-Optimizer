@@ -140,6 +140,8 @@ function AdminSettingsPage() {
     for (const s of tabSettings) {
       if (configs[s.name] !== undefined) {
         toSave[s.name] = configs[s.name];
+      } else if (s.defaultValue !== undefined) {
+        toSave[s.name] = s.defaultValue;
       }
     }
     saveMutation.mutate(toSave);
@@ -307,10 +309,8 @@ function AdminSettingsPage() {
           groupTitle={tDynamic(`admin.settings.groups.${testingGroup}.title`)}
           configOverrides={Object.fromEntries(
             settings
-              .filter(
-                (s) => s.group === testingGroup && configs[s.name] !== undefined
-              )
-              .map((s) => [s.name, configs[s.name]])
+              .filter((s) => s.group === testingGroup)
+              .map((s) => [s.name, configs[s.name] ?? s.defaultValue ?? ''])
           )}
         />
       )}

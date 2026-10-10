@@ -61,6 +61,7 @@ export function OptimizerPricing() {
     m['optimizer.pricing.premium.free'](),
     m['optimizer.pricing.premium.power'](),
     m['optimizer.pricing.premium.games'](),
+    m['optimizer.pricing.premium.cpu'](),
     m['optimizer.pricing.premium.capture'](),
     m['optimizer.pricing.premium.device'](),
     m['optimizer.pricing.premium.offline'](),

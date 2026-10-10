@@ -1,0 +1,2 @@
+# Windows packages are hosted in the dedicated R2 bucket, not Worker static assets.
+/downloads/*.zip

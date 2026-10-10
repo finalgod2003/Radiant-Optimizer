@@ -26,6 +26,7 @@ export interface TestResult {
 }
 
 export const testSpecs: Record<string, TestSpec> = {
+  waffo: { group: 'waffo', fields: [] },
   resend: {
     group: 'resend',
     fields: [

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { useSession } from '@/core/auth/client';
 import { envConfigs } from '@/config';
+import { SUPPORT_EMAIL } from '@/config/support';
 import { m } from '@/paraglide/messages.js';
 import { getLocale, setLocale } from '@/paraglide/runtime.js';
 import { ProductShell } from '@/components/optimizer/product-shell';
@@ -13,6 +14,7 @@ export function OptimizerShell({ children }: { children: ReactNode }) {
     <ProductShell
       name={envConfigs.app_name}
       logo={envConfigs.app_logo}
+      supportEmail={SUPPORT_EMAIL}
       locale={locale}
       onLocaleChange={() => setLocale(locale === 'en' ? 'zh' : 'en')}
       navigation={[

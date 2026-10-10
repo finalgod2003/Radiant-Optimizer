@@ -15,6 +15,7 @@ import {
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import { SUPPORT_EMAIL } from '@/config/support';
 import { m } from '@/paraglide/messages.js';
 import { getLocale, setLocale } from '@/paraglide/runtime.js';
 import { useOptimizerCatalog } from '@/blocks/optimizer/catalog-query';
@@ -74,17 +75,19 @@ function PreviewHeader() {
 }
 
 function ProductShot() {
-  const [screen, setScreen] = useState<'overview' | 'optimize' | 'recovery'>(
-    'overview'
-  );
+  const [screen, setScreen] = useState<
+    'overview' | 'optimize' | 'cpu' | 'recovery'
+  >('overview');
   const [enlarged, setEnlarged] = useState(false);
   const label =
     screen === 'overview'
       ? m['radiant.product.overviewtab']()
       : screen === 'optimize'
         ? m['radiant.product.optimizetab']()
-        : m['radiant.product.recoverytab']();
-  const src = `/design-preview/radiant-client-${screen}.png?v=0.3.0`;
+        : screen === 'cpu'
+          ? m['radiant.product.cputab']()
+          : m['radiant.product.recoverytab']();
+  const src = `/design-preview/radiant-client-${screen}.png?v=0.5.0`;
   return (
     <figure className="pv-product-shot">
       <div className="pv-shot-toolbar">
@@ -103,6 +106,12 @@ function ProductShot() {
             onClick={() => setScreen('optimize')}
           >
             {m['radiant.product.optimizetab']()}
+          </button>
+          <button
+            aria-pressed={screen === 'cpu'}
+            onClick={() => setScreen('cpu')}
+          >
+            {m['radiant.product.cputab']()}
           </button>
           <button
             aria-pressed={screen === 'recovery'}
@@ -211,11 +220,11 @@ function ProductHero() {
 function ProductFeatures() {
   const features = [
     {
-      title: m['optimizer.feature.hardware.title'](),
-      description: m['optimizer.feature.hardware.description'](),
+      title: m['optimizer.feature.settings.title'](),
+      description: m['optimizer.feature.settings.description'](),
       items: [
-        m['optimizer.feature.hardware.detail'](),
-        m['optimizer.pricing.free.diagnostics'](),
+        m['optimizer.feature.settings.detail'](),
+        m['optimizer.pricing.free.settings'](),
       ],
     },
     {
@@ -452,6 +461,7 @@ function PreviewFooter() {
         <Link href="/tools">{m['optimizer.nav.tools']()}</Link>
         <Link href="/privacy-policy">{m['optimizer.footer.privacy']()}</Link>
         <Link href="/terms-of-service">{m['optimizer.footer.terms']()}</Link>
+        <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
         <button onClick={() => setLocale(getLocale() === 'en' ? 'zh' : 'en')}>
           {m['optimizer.nav.switch_locale']()}
         </button>

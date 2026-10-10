@@ -26,7 +26,9 @@ For desktop activation, run `node scripts/setup-desktop-keys.mjs` once to create
 - `pnpm build`
 - `pnpm start` (supply production environment variables)
 
-Before a production build, configure `VITE_APP_URL` in `.env.production` for correct canonical and sitemap URLs. Configure `AUTH_SECRET` and the database before exposing accounts. This desktop product expansion has not been deployed; the previously deployed game site is separate from the local preview.
+The production website is deployed at <https://radiantoptimizer.xyz>. Cloudflare Workers Builds follows `main`, using the committed public production profile and existing Cloudflare secrets. See [Cloudflare deployment settings and verification](docs/cloudflare-deployment.md) for the build commands, release download binding, and migration workflow.
+
+For other deployment environments, configure `VITE_APP_URL` in `.env.production` for correct canonical and sitemap URLs. Configure `AUTH_SECRET` and the database before exposing accounts.
 
 ## Analytics
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Radiant.Core;
 using Radiant.Licensing;
 using Radiant.Windows;
@@ -43,6 +44,7 @@ public sealed partial class MainWindow : Window
         licenses = new LicenseClient(settings.ServerUrl, dataDirectory, ProductSettings.TrustedKeys());
         chinese = File.Exists(Path.Combine(dataDirectory, "language.zh"));
         Title = settings.AppName;
+        Icon = new BitmapImage(new Uri("pack://application:,,,/Assets/AppIcon.ico"));
         Width = 1220; Height = 840; MinWidth = 960; MinHeight = 660;
         Background = Ui.Background; Foreground = Ui.Foreground;
         FontFamily = new FontFamily("Segoe UI");
@@ -51,7 +53,14 @@ public sealed partial class MainWindow : Window
         shell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(228) });
         shell.ColumnDefinitions.Add(new ColumnDefinition());
         var sidebar = new DockPanel { Background = Ui.Brush("#172338"), Margin = new Thickness(0) };
-        var brand = Ui.Stack(Ui.Text("R /", 38, Ui.Accent, true), Ui.Text(settings.AppName, 18, bold: true), edition);
+        var brandMark = new Image
+        {
+            Source = new BitmapImage(new Uri("pack://application:,,,/Assets/BrandMark.png")),
+            Width = 54, Height = 54, HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+        RenderOptions.SetBitmapScalingMode(brandMark, BitmapScalingMode.HighQuality);
+        var brand = Ui.Stack(brandMark, Ui.Text(settings.AppName, 18, bold: true), edition);
         brand.Margin = new Thickness(24, 28, 18, 36);
         DockPanel.SetDock(brand, Dock.Top); sidebar.Children.Add(brand);
         var bottom = Ui.Stack(Ui.Text("0.3.0 · " + settings.Channel, 11, Ui.Muted),

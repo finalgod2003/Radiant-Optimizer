@@ -7,6 +7,10 @@
 under `desktop/`, version 0.3.0, at 1200 × 820. The homepage uses these images
 with the approved C / Midnight blue palette. No competitor screenshots are used.
 
+The current views use the RO monogram from `public/brand/ro-mark.svg`, rendered
+from the client's visual tree after the logo update. Regenerating these views
+does not apply or restore any settings. See `docs/brand/README.md` for logo assets.
+
 Overview uses actual sampled hardware information from the development PC, not
 promised results for another machine. Windows settings shows the actual optional
 animation controls. Recovery shows real native acceptance records: all three

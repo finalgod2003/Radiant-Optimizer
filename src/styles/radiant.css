@@ -23,12 +23,6 @@
   --r-text: #e8edf5;
   --r-lime: #a4c8f4;
 }
-.radiant-cinema .brand .radiant-wordmark {
-  color: #a4c8f4;
-  font-size: 34px;
-  font-weight: 600;
-  letter-spacing: -3px;
-}
 .games-intro {
   padding-block: 48px 32px;
   border-bottom: 1px solid var(--r-border);

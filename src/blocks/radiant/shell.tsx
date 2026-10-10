@@ -25,9 +25,12 @@ export function RadiantShell({
   ];
   const brand = (
     <>
-      <span className="radiant-wordmark" aria-hidden="true">
-        {envConfigs.app_name.slice(0, 1).toLowerCase()}.
-      </span>
+      <img
+        src={envConfigs.app_logo || '/logo.svg'}
+        width={36}
+        height={36}
+        alt=""
+      />
       <span>{envConfigs.app_name}</span>
     </>
   );

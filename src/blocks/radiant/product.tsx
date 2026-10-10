@@ -26,9 +26,13 @@ export type PreviewStyle = 'paper' | 'atlas' | 'cinema';
 function PreviewBrand() {
   return (
     <a href="#preview-home" className="pv-brand">
-      <span className="pv-brand-mark" aria-hidden="true">
-        {envConfigs.app_name.slice(0, 1).toLowerCase()}.
-      </span>
+      <img
+        className="pv-brand-mark"
+        src={envConfigs.app_logo || '/logo.svg'}
+        width={36}
+        height={36}
+        alt=""
+      />
       <span>{envConfigs.app_name}</span>
     </a>
   );

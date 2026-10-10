@@ -6,10 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../public/favicon.ico</ApplicationIcon>
     <Version>0.3.0</Version>
     <AssemblyName>Optimizer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="../../public/favicon.ico" Link="Assets/AppIcon.ico" />
+    <Resource Include="../../public/brand/ro-mark.png" Link="Assets/BrandMark.png" />
     <ProjectReference Include="../Radiant.Core/Radiant.Core.csproj" />
     <ProjectReference Include="../Radiant.Windows/Radiant.Windows.csproj" />
     <ProjectReference Include="../Radiant.Licensing/Radiant.Licensing.csproj" />

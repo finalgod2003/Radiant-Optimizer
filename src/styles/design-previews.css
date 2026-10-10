@@ -149,14 +149,11 @@ body:has(.design-previews) .tsqd-open-btn-container {
   white-space: nowrap;
 }
 .pv-brand-mark {
-  display: grid;
-  place-items: center;
-  width: 29px;
-  height: 32px;
-  color: var(--pv-accent);
-  font-family: 'Libre Baskerville', Georgia, serif;
-  font-size: 31px;
-  font-weight: 400;
+  display: block;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .pv-header nav {
   display: flex;
@@ -1373,8 +1370,8 @@ body:has(.design-previews) .tsqd-open-btn-container {
     letter-spacing: -0.4px;
   }
   .pv-brand-mark {
-    font-size: 26px;
-    width: 22px;
+    width: 30px;
+    height: 30px;
   }
   .pv-header-download {
     padding: 8px 10px;

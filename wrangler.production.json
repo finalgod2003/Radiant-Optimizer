@@ -16,7 +16,8 @@
     "VITE_APP_NAME": "Radiant Optimizer",
     "GOOGLE_ANALYTICS_ID": "G-2ZJTXQ0EZ0",
     "PLAUSIBLE_DOMAIN": "radiantoptimizer.xyz",
-    "PLAUSIBLE_SRC": "https://stats.blackholeenglish.com/js/pa-o45fCHNhYkEiUkUL7UY0A.js"
+    "PLAUSIBLE_SRC": "https://stats.blackholeenglish.com/js/pa-o45fCHNhYkEiUkUL7UY0A.js",
+    "OPTIMIZER_RELEASE_JSON": "{\"version\":\"0.5.0\",\"downloadUrl\":\"https://radiantoptimizer.xyz/api/optimizer/download?sha256=40fcf6725af9a010896d3ed610246b1b24ea8233fe9793b6373a5b22a92a37bf\",\"sha256\":\"40fcf6725af9a010896d3ed610246b1b24ea8233fe9793b6373a5b22a92a37bf\",\"sizeBytes\":59473665,\"activationAvailable\":true}"
   },
   "d1_databases": [
     {
@@ -24,6 +25,12 @@
       "database_name": "radiant-optimizer-db",
       "database_id": "1abcfc20-d6b1-41dd-92fb-3a607b7ebf3a",
       "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "OPTIMIZER_RELEASES",
+      "bucket_name": "radiant-optimizer-releases"
     }
   ]
 }

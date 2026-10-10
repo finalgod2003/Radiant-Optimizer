@@ -30,6 +30,9 @@ them in the build environment or the repository.
 Pushes to `main` automatically build and publish the website. Check the commit
 SHA and deployment result in the Worker's **Deployments** tab. Other branches do
 not deploy. Desktop installers are released separately and are not built here.
+The committed profile preserves the `OPTIMIZER_RELEASES` R2 binding and the
+public `OPTIMIZER_RELEASE_JSON` manifest. Update that manifest after publishing
+a new installer so a later website deployment keeps the latest download.
 
 Database migrations are a separate reviewed operation. This pipeline does not
 push schemas or apply migrations. Before merging a change that requires a new

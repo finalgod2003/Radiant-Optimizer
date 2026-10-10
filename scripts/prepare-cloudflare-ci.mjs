@@ -9,7 +9,17 @@ const profile = readFileSync(
 );
 const { vars } = JSON.parse(profile);
 const productionEnv = Object.entries(vars)
-  .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+  .map(([key, value]) => {
+    // Both Vite and the app's env loader must preserve embedded JSON quotes.
+    const text = String(value);
+    const quote = ["'", '"'].find((candidate) => !text.includes(candidate));
+    if (!quote || /[\r\n]/u.test(text)) {
+      throw new Error(
+        `Cloudflare CI: ${key} must be a single-line dotenv value`
+      );
+    }
+    return `${key}=${quote}${text}${quote}`;
+  })
   .join('\n');
 
 for (const [file, contents] of [

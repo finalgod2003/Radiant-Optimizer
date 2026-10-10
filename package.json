@@ -1,6 +1,6 @@
 {
   "name": "radiant-optimizer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -21,7 +21,9 @@
     "rbac:assign": "tsx scripts/with-env.ts tsx scripts/assign-role.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "desktop:build": "node --env-file-if-exists=.env.development scripts/build-desktop.mjs",
+    "desktop:test": "node scripts/test-desktop.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": "prettier --write",

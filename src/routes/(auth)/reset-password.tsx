@@ -117,8 +117,10 @@ function ResetPasswordPage() {
               </FieldGroup>
             ) : (
               <form
+                method="post"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!tokenChecked || !token) return;
                   form.handleSubmit();
                 }}
               >
@@ -157,7 +159,10 @@ function ResetPasswordPage() {
                   <Field>
                     <form.Subscribe selector={(s) => s.isSubmitting}>
                       {(isSubmitting) => (
-                        <Button type="submit" disabled={isSubmitting}>
+                        <Button
+                          type="submit"
+                          disabled={!tokenChecked || !token || isSubmitting}
+                        >
                           {isSubmitting
                             ? '...'
                             : m['common.sign.reset_password_submit']()}

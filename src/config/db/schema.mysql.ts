@@ -561,3 +561,80 @@ export type NewTicketMessage = typeof ticketMessage.$inferInsert;
 
 // ─── Custom tables ───────────────────────────────────────────────────────────
 // Add your own tables below this line.
+
+// ─── Desktop product licensing ───────────────────────────────────────────────
+export const productLicense = table(
+  'product_license',
+  {
+    id: varchar191('id').primaryKey(),
+    orderId: varchar191('order_id')
+      .notNull()
+      .unique()
+      .references(() => order.id),
+    userId: varchar191('user_id')
+      .notNull()
+      .references(() => user.id),
+    productId: varchar191('product_id').notNull(),
+    status: varchar191('status').notNull().default('active'),
+    activeDeviceId: varchar191('active_device_id'),
+    deviceSlotExpiresAt: timestamp('device_slot_expires_at', { fsp: 3 }),
+    createdAt: timestamp('created_at', { fsp: 3 }).notNull(),
+    updatedAt: timestamp('updated_at', { fsp: 3 }).notNull(),
+  },
+  (t) => [index('idx_product_license_user').on(t.userId)]
+);
+export const deviceActivation = table(
+  'device_activation',
+  {
+    id: varchar191('id').primaryKey(),
+    licenseId: varchar191('license_id')
+      .notNull()
+      .references(() => productLicense.id),
+    installationId: varchar191('installation_id').notNull(),
+    name: varchar191('name').notNull(),
+    tokenHash: varchar191('token_hash').unique(),
+    createdAt: timestamp('created_at', { fsp: 3 }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { fsp: 3 }).notNull(),
+    revokedAt: timestamp('revoked_at', { fsp: 3 }),
+  },
+  (t) => [index('idx_device_activation_license').on(t.licenseId)]
+);
+export const desktopAuthGrant = table(
+  'desktop_auth_grant',
+  {
+    id: varchar191('id').primaryKey(),
+    deviceCodeHash: varchar191('device_code_hash').notNull().unique(),
+    userCodeHash: varchar191('user_code_hash').notNull().unique(),
+    deviceName: varchar191('device_name').notNull(),
+    installationId: varchar191('installation_id').notNull(),
+    status: varchar191('status').notNull().default('pending'),
+    licenseId: varchar191('license_id').references(() => productLicense.id),
+    deviceId: varchar191('device_id'),
+    approvedBy: varchar191('approved_by').references(() => user.id),
+    createdAt: timestamp('created_at', { fsp: 3 }).notNull(),
+    expiresAt: timestamp('expires_at', { fsp: 3 }).notNull(),
+    lastPolledAt: timestamp('last_polled_at', { fsp: 3 }),
+    consumedAt: timestamp('consumed_at', { fsp: 3 }),
+  },
+  (t) => [index('idx_desktop_grant_expires').on(t.expiresAt)]
+);
+export const licenseEvent = table(
+  'license_event',
+  {
+    id: varchar191('id').primaryKey(),
+    licenseId: varchar191('license_id').references(() => productLicense.id),
+    actorUserId: varchar191('actor_user_id').references(() => user.id),
+    type: varchar191('type').notNull(),
+    detail: text('detail').notNull(),
+    createdAt: timestamp('created_at', { fsp: 3 }).notNull(),
+  },
+  (t) => [index('idx_license_event_license').on(t.licenseId, t.createdAt)]
+);
+export type ProductLicense = typeof productLicense.$inferSelect;
+export type NewProductLicense = typeof productLicense.$inferInsert;
+export type DeviceActivation = typeof deviceActivation.$inferSelect;
+export type NewDeviceActivation = typeof deviceActivation.$inferInsert;
+export type DesktopAuthGrant = typeof desktopAuthGrant.$inferSelect;
+export type NewDesktopAuthGrant = typeof desktopAuthGrant.$inferInsert;
+export type LicenseEvent = typeof licenseEvent.$inferSelect;
+export type NewLicenseEvent = typeof licenseEvent.$inferInsert;

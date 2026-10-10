@@ -42,3 +42,7 @@ LICENSE
 *.log
 *.pem
 *.tsbuildinfo
+desktop
+artifacts
+public/downloads/*.zip
+public/downloads/optimizer-release.json

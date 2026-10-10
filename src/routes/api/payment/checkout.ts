@@ -1,11 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
+import {
+  OPTIMIZER_PRODUCT_ID,
+  optimizerCheckoutEnabled,
+} from '@/config/optimizer';
 import { getPricingProduct } from '@/config/pricing';
 import { getAllConfigs } from '@/modules/config/service';
+import { LicenseError, licenses } from '@/modules/licenses/service';
 import { createCheckout } from '@/modules/payment/service';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import { respData, respErr } from '@/lib/resp';
+
+import { requireSameOrigin } from '../desktop/-http';
 
 function safeSameOriginPath(
   input: string | undefined | null,
@@ -31,6 +38,7 @@ async function POST({ request }: { request: Request }) {
   if (limited) return limited;
 
   try {
+    requireSameOrigin(request);
     const auth = getAuth();
     const session = await auth.api.getSession({ headers: request.headers });
 
@@ -56,12 +64,25 @@ async function POST({ request }: { request: Request }) {
     // Only the charged amount is overridden — credits granted and order
     // amount stored both come from the authoritative catalog.
     const configs = await getAllConfigs();
-    const providerKey = payment_provider || configs.default_payment_provider;
+    const isOptimizer = product.productId === OPTIMIZER_PRODUCT_ID;
+    if (
+      isOptimizer &&
+      (!optimizerCheckoutEnabled(configs) ||
+        (payment_provider && payment_provider !== 'stripe'))
+    ) {
+      return respErr('Optimizer checkout is not configured', { status: 503 });
+    }
+    if (isOptimizer) await licenses.keys();
+    const providerKey = isOptimizer
+      ? 'stripe'
+      : payment_provider || configs.default_payment_provider;
     const testAmountRaw = providerKey
       ? configs[`${providerKey}_test_amount`]
       : undefined;
     const testAmount = testAmountRaw ? parseInt(testAmountRaw) : 0;
-    const chargeAmount = testAmount > 0 ? testAmount : product.priceInCents;
+    // Licenses always use the full catalog price, including Stripe test mode.
+    const chargeAmount =
+      !isOptimizer && testAmount > 0 ? testAmount : product.priceInCents;
 
     // Build success/cancel URLs — only accept same-origin redirects.
     const baseUrl = configs.app_url || 'http://localhost:3000';
@@ -75,7 +96,7 @@ async function POST({ request }: { request: Request }) {
     // hand a session token to a desktop client — a browser coming back from
     // checkout is already signed in, and that page isn't part of this app.
     const finalRedirect = `${baseUrl}${safeRedirectPath}`;
-    const successUrl = `${baseUrl}/api/payment/callback?redirect=${encodeURIComponent(finalRedirect)}`;
+    const successUrl = finalRedirect;
     const cancelUrl = `${baseUrl}/pricing`;
 
     const checkout = await createCheckout({
@@ -104,13 +125,15 @@ async function POST({ request }: { request: Request }) {
             }
           : undefined,
       },
-      provider: payment_provider,
+      provider: providerKey,
     });
 
     return respData({ checkout_url: checkout.checkoutInfo.checkoutUrl });
   } catch (error: any) {
     console.error('checkout error:', error);
-    return respErr(error.message || 'Checkout failed');
+    return respErr(error.message || 'Checkout failed', {
+      status: error instanceof LicenseError ? error.status : 400,
+    });
   }
 }
 

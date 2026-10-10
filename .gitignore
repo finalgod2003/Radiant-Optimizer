@@ -65,3 +65,12 @@ package-lock.json
 
 # Runtime image uploads (no-storage local fallback)
 /public/uploads/
+
+# Desktop build tools, credentials and local output
+/desktop/**/bin/
+/desktop/**/obj/
+/desktop/**/desktop-settings.local.json
+/desktop/**/trusted-keys.local.json
+/artifacts/
+/public/downloads/*.zip
+/public/downloads/optimizer-release.json

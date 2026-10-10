@@ -19,7 +19,7 @@ export const envConfigs: Record<string, string> = {
   app_name: publicEnv('VITE_APP_NAME') ?? 'Radiant Optimizer',
   app_description:
     publicEnv('VITE_APP_DESCRIPTION') ??
-    'Browser games, sharper settings. Explore classic games and free gaming tools.',
+    'Understand your Windows PC, preview supported settings, and keep a recovery record.',
   app_logo: publicEnv('VITE_APP_LOGO') ?? '/logo.svg',
 
   // Database

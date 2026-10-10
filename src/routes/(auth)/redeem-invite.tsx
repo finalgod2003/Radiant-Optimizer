@@ -114,7 +114,7 @@ function RedeemInvitePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit}>
+            <form method="post" onSubmit={handleSubmit}>
               <FieldGroup>
                 {error && (
                   <div className="bg-destructive/10 text-destructive rounded-lg p-3 text-sm">

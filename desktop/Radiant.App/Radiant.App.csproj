@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.2.0</Version>
+    <AssemblyName>Optimizer</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Radiant.Core/Radiant.Core.csproj" />
+    <ProjectReference Include="../Radiant.Windows/Radiant.Windows.csproj" />
+    <ProjectReference Include="../Radiant.Licensing/Radiant.Licensing.csproj" />
+    <ProjectReference Include="../Radiant.Games/Radiant.Games.csproj" />
+    <ProjectReference Include="../Radiant.Monitoring/Radiant.Monitoring.csproj" />
+    <Content Include="../../artifacts/tool-downloads/PresentMon/PresentMon.exe" Link="tools/PresentMon/PresentMon.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" Condition="Exists('../../artifacts/tool-downloads/PresentMon/PresentMon.exe')" />
+    <Content Include="../third-party/PresentMon.LICENSE.txt" Link="tools/PresentMon/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Always" ExcludeFromSingleFile="true" />
+    <Content Include="desktop-settings.local.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('desktop-settings.local.json')" />
+    <EmbeddedResource Include="trusted-keys.local.json" LogicalName="Optimizer.TrustedLicenseKeys" Condition="Exists('trusted-keys.local.json')" />
+  </ItemGroup>
+</Project>

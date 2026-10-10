@@ -239,6 +239,8 @@ export interface PaymentEvent {
   eventResult: any; // provider event result
 
   paymentSession?: PaymentSession;
+  /** Orders verified/changed by the payment service; API layer orchestrates entitlements. */
+  orderIds?: string[];
 }
 
 export interface PaymentInvoice {

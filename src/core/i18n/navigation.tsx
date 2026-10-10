@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import { useMemo, type ComponentProps, type ReactNode } from 'react';
 import {
   Link as RouterLink,
   useLocation,
@@ -50,18 +50,23 @@ function toNavigateOptions(href: string) {
 
 export function useRouter() {
   const router = useTanStackRouter();
-  return {
-    // navigate() goes through the router rewrite so outgoing URLs are
-    // localized — do not switch this back to history.push.
-    push: (href: string) => {
-      router.navigate(toNavigateOptions(href) as any);
-    },
-    replace: (href: string) => {
-      router.navigate({ ...toNavigateOptions(href), replace: true } as any);
-    },
-    back: () => router.history.back(),
-    forward: () => router.history.forward(),
-    refresh: () => router.invalidate(),
-    prefetch: (_href: string) => {},
-  };
+  // Consumers use this object in effect dependencies. Keep its identity stable
+  // so a navigation-triggered render does not trigger another navigation.
+  return useMemo(
+    () => ({
+      // navigate() goes through the router rewrite so outgoing URLs are
+      // localized — do not switch this back to history.push.
+      push: (href: string) => {
+        router.navigate(toNavigateOptions(href) as any);
+      },
+      replace: (href: string) => {
+        router.navigate({ ...toNavigateOptions(href), replace: true } as any);
+      },
+      back: () => router.history.back(),
+      forward: () => router.history.forward(),
+      refresh: () => router.invalidate(),
+      prefetch: (_href: string) => {},
+    }),
+    [router]
+  );
 }

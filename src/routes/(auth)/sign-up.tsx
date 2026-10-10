@@ -10,6 +10,7 @@ import { apiPost } from '@/lib/api-client';
 import { resolveAfterAuthUrl, safeInternalPath } from '@/lib/redirect';
 import { m } from '@/paraglide/messages.js';
 import { localizeHref } from '@/paraglide/runtime.js';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { usePublicConfig } from '@/hooks/use-public-config';
 import { TextField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ const signUpSchema = z
   });
 
 function SignUpPage() {
+  const hydrated = useHydrated();
   const router = useRouter();
   const { data: session, isPending: sessionPending } = useSession();
   // Set right before we navigate so the already-signed-in effect doesn't also fire.
@@ -190,8 +192,10 @@ function SignUpPage() {
               </div>
             ) : (
               <form
+                method="post"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!hydrated) return;
                   form.handleSubmit();
                 }}
               >
@@ -319,7 +323,10 @@ function SignUpPage() {
                       <Field>
                         <form.Subscribe selector={(s) => s.isSubmitting}>
                           {(isSubmitting) => (
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button
+                              type="submit"
+                              disabled={!hydrated || isSubmitting}
+                            >
                               {isSubmitting
                                 ? '...'
                                 : m['common.sign.sign_up_title']()}

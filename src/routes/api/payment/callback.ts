@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { getAllConfigs } from '@/modules/config/service';
+import { licenses } from '@/modules/licenses/service';
 import { handlePaymentCallback } from '@/modules/payment/service';
 
 /**
@@ -37,7 +38,8 @@ async function GET({ request }: { request: Request }) {
 
   try {
     if (orderNo) {
-      await handlePaymentCallback(orderNo);
+      const orderId = await handlePaymentCallback(orderNo);
+      if (orderId) await licenses.fulfillOrder(orderId);
     }
   } catch (error: any) {
     console.error('payment callback error:', error);

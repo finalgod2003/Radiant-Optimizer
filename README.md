@@ -1,6 +1,8 @@
 # Radiant Optimizer
 
-A bilingual browser-game directory and gaming toolkit built on the ShipAny TanStack template.
+An independent Windows optimizer preview with a native .NET client, bilingual product website, accounts, and device licensing, built on the ShipAny TanStack template. The existing game directory remains at `/games` and calculators at `/tools`.
+
+The 0.2 Preview adds reversible game presets, live hardware history, and PresentMon frame capture with a separate overlay and local CSV export. Game formats and sensor availability are explicitly checked. NVIDIA driver tuning, broader game compatibility and bandwidth testing remain future work. See [preview delivery and operation notes](docs/optimizer-preview.md), [game profile support](docs/game-profile-support.md), and [monitoring support](docs/monitoring-support.md) for the exact scope.
 
 ## Run locally
 
@@ -11,16 +13,20 @@ Requires Node.js 22.12+ and pnpm 11.19 (pinned in package.json).
 3. Initialize the local SQLite database: `pnpm db:push`.
 4. Run `pnpm dev` and open http://localhost:3000.
 
-The predev script prepares translations on first boot. Home, game library and calculators need no login. No admin account is created automatically.
+The predev script prepares translations on first boot. Product pages, game library and calculators need no login. No admin account is created automatically. Run `pnpm rbac:init` and use `pnpm rbac:assign` for an explicitly selected account when configuring the admin panel.
+
+For desktop activation, run `node scripts/setup-desktop-keys.mjs` once to create persistent local signing keys without printing them. Install the .NET 10 SDK (or set `DOTNET_HOST_PATH`), then run `pnpm desktop:build`. The ZIP and its SHA-256 manifest appear in `public/downloads/`; the website enables its download link only when a valid release exists. The client trusts the public keys embedded at build time. Set the intended website origin before packaging: the package built in this workspace connects to `http://localhost:3010`.
 
 ## Validate and build
 
-- `pnpm exec tsx --test tests/gaming-tools.test.ts`
+- `pnpm exec tsx --test tests/*.test.ts`
+- `pnpm desktop:test` (Windows; recovery, licensing, game-file and monitoring checks)
+- `pnpm exec tsx scripts/with-env.ts tsx tests/desktop-activation.run.ts http://localhost:3010` (with the local server running against `data/optimizer-dev.db`)
 - `pnpm exec tsc --noEmit` (after the first dev/build has generated translations and routes)
 - `pnpm build`
 - `pnpm start` (supply production environment variables)
 
-Before a production build, configure `VITE_APP_URL` in `.env.production` for correct canonical and sitemap URLs. Configure `AUTH_SECRET` and the database if exposing the template account/admin functionality. The site has not been deployed.
+Before a production build, configure `VITE_APP_URL` in `.env.production` for correct canonical and sitemap URLs. Configure `AUTH_SECRET` and the database before exposing accounts. This desktop product expansion has not been deployed; the previously deployed game site is separate from the local preview.
 
 ## Analytics
 
@@ -40,15 +46,24 @@ The production site at `https://radiantoptimizer.xyz` uses GA4 property `Radiant
 
 ## What is included
 
-- English at `/`; Chinese at `/zh`.
-- Homepage H1: **Radiant Optimizer**.
+- Native Windows x64 client: real hardware/process readings, CPU/RAM history, supported GPU sensors, bounded Ping/DNS tests and in-window input tools. NVIDIA NVML provides optional GPU load, temperature and memory; Windows GPU counters provide available fallback readings. CPU temperature is not included.
+- Free game discovery and preview for narrow CS2, Fortnite and VALORANT file formats. Competitive and balanced presets preserve unrelated content. Unknown versions, missing required keys, running games, read-only paths and external changes block application. See the support document before using a preset; actual game-launch compatibility is not assumed.
+- Premium adds game preset application, existing power-plan switching, PresentMon recording, a separate floating overlay and local CSV export. Frame statistics report application presentation cadence, including dropped frames, not physical-display FPS or end-to-end input latency. The overlay is intended for windowed or borderless play.
+- Three experimental free user-level settings (Game Mode, game recording and background capture). System and game writes default off each session and require confirmation.
+- Durable original-value journal, exact game-file backups, readback verification and conflict-aware restoration. Recovery is always free. Monitoring data and game backups stay local and are not automatically uploaded.
+- Website sign-in, product/download pages, short-code device approval, license/device management and admin revocation.
+- Stripe one-time payment confirmation and refund revocation; single active device, seven-day signed offline lease, DPAPI-protected local credentials. No real merchant payment has been performed.
+- Checkout remains disabled until signing and Stripe merchant settings are configured. The $57.77 catalog value is a development reference price, not a completed commercial launch.
+
+The retained browser library at `/games` (Chinese: `/zh/games`) includes:
+
 - 25 source destinations, searchable categories, alphabetical sorting and local bookmarks.
 - 17 embedded-launch entries and 8 original-site entries. Third-party availability is not guaranteed.
 - Game detail pages with click-to-load, fullscreen, reload, stop and original-site fallback.
 - FPS/frame-time and same-game DPI sensitivity calculators.
 - Responsive layout, localized metadata and sitemap, source attribution.
 
-This is an independent community directory, not the official Windows optimizer. The game list comes from [the supplied @RadiantOpti post](https://x.com/RadiantOpti/status/2108068632991256995). Some hosts forbid embedding or require their own tab, and some ports require your own game files. See [implementation notes](docs/implementation-notes.md) and [game sources](docs/game-sources.md).
+This project is independently implemented and is not affiliated with the original Radiant Optimizer. The retained game list comes from [the supplied @RadiantOpti post](https://x.com/RadiantOpti/status/2108068632991256995). Some hosts forbid embedding or require their own tab, and some ports require your own game files. See [directory implementation notes](docs/implementation-notes.md) and [game sources](docs/game-sources.md).
 
 ## Template and Git
 

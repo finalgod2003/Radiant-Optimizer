@@ -14,7 +14,15 @@ export const Route = createFileRoute('/sitemap.xml')({
   server: {
     handlers: {
       GET: () => {
-        const paths = ['/', ...games.map((game) => '/games/' + game.id)];
+        const paths = [
+          '/',
+          '/features',
+          '/pricing',
+          '/download',
+          '/games',
+          '/tools',
+          ...games.map((game) => '/games/' + game.id),
+        ];
         const entries = paths.flatMap((path) =>
           locales.map((locale) => {
             const urlFor = (loc: (typeof locales)[number]) =>

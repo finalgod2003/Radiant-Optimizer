@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { apiPatch } from '@/lib/api-client';
 import { m } from '@/paraglide/messages.js';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { TextField } from '@/components/form-field';
 import { ImageUploader, ImageUploaderValue } from '@/components/image-uploader';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,7 @@ export function SettingsForm({
   email: string;
   image: string;
 }) {
+  const hydrated = useHydrated();
   const [image, setImage] = useState(initialImage);
   const queryClient = useQueryClient();
 
@@ -66,8 +68,10 @@ export function SettingsForm({
 
   return (
     <form
+      method="post"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!hydrated) return;
         form.handleSubmit();
       }}
       className="space-y-6 p-6"
@@ -114,7 +118,7 @@ export function SettingsForm({
             {(isSubmitting) => (
               <Button
                 type="submit"
-                disabled={isSubmitting || saveMutation.isPending}
+                disabled={!hydrated || isSubmitting || saveMutation.isPending}
               >
                 {isSubmitting || saveMutation.isPending
                   ? m['settings.profile.saving']()

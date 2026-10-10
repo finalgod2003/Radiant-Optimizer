@@ -21,7 +21,7 @@ export function GameDetail({ game }: { game: Game }) {
   return (
     <RadiantShell>
       <div className="detail-page site-width">
-        <Link href="/#library" className="back-link">
+        <Link href="/games" className="back-link">
           <ArrowLeft size={16} />
           {m['radiant.player.back']()}
         </Link>
@@ -97,7 +97,7 @@ export function GameDetail({ game }: { game: Game }) {
           <section className="related-section">
             <div className="section-heading">
               <h2>{m['radiant.player.more']()}</h2>
-              <Link href="/#library" className="text-link">
+              <Link href="/games" className="text-link">
                 {m['radiant.nav.library']()}
                 <ArrowUpRight size={16} />
               </Link>

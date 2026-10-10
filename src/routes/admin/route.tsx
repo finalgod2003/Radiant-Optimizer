@@ -3,6 +3,7 @@ import {
   CreditCard,
   FolderOpen,
   Home,
+  KeyRound,
   LayoutDashboard,
   Settings,
   Shield,
@@ -19,6 +20,12 @@ export const Route = createFileRoute('/admin')({
 function AdminLayout() {
   const group = m['common.systems.admin']();
   const navItems = [
+    {
+      href: '/admin/licenses',
+      label: m['optimizer.admin.nav'](),
+      icon: KeyRound,
+      group,
+    },
     {
       href: '/admin',
       label: m['admin.nav.overview'](),
@@ -78,6 +85,7 @@ function AdminLayout() {
       brandHref="/admin"
       profileHref="/settings/profile"
       requirePermission="admin.*"
+      unauthorizedRedirect="/settings/licenses"
     >
       <Outlet />
     </AppLayout>

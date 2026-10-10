@@ -8,6 +8,7 @@ import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import { m } from '@/paraglide/messages.js';
 import { localizeHref } from '@/paraglide/runtime.js';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { usePublicConfig } from '@/hooks/use-public-config';
 import { TextField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ const forgotSchema = z.object({
 });
 
 function ForgotPasswordPage() {
+  const hydrated = useHydrated();
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [sentEmail, setSentEmail] = useState('');
@@ -116,8 +118,10 @@ function ForgotPasswordPage() {
               </FieldGroup>
             ) : (
               <form
+                method="post"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!hydrated) return;
                   form.handleSubmit();
                 }}
               >
@@ -141,7 +145,10 @@ function ForgotPasswordPage() {
                   <Field>
                     <form.Subscribe selector={(s) => s.isSubmitting}>
                       {(isSubmitting) => (
-                        <Button type="submit" disabled={isSubmitting}>
+                        <Button
+                          type="submit"
+                          disabled={!hydrated || isSubmitting}
+                        >
                           {isSubmitting
                             ? '...'
                             : m['common.sign.send_reset_link']()}

@@ -3,15 +3,18 @@ import { createFileRoute } from '@tanstack/react-router';
 import { envConfigs } from '@/config';
 import { m } from '@/paraglide/messages.js';
 import { getLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
-import { RadiantHome } from '@/blocks/radiant/home';
+import { OptimizerHome } from '@/blocks/optimizer/home';
 
 export const Route = createFileRoute('/')({
   loader: () => {
     const locale = getLocale();
     return {
       locale,
-      title: m['radiant.meta.title']({}, { locale }),
-      description: m['radiant.meta.description']({}, { locale }),
+      title: m['optimizer.meta.home_title'](
+        { name: envConfigs.app_name },
+        { locale }
+      ),
+      description: m['optimizer.meta.home_description']({}, { locale }),
     };
   },
   head: ({ loaderData }) => {
@@ -28,11 +31,7 @@ export const Route = createFileRoute('/')({
         { property: 'og:description', content: description },
         { property: 'og:type', content: 'website' },
         { property: 'og:url', content: urlFor(locale) },
-        {
-          property: 'og:image',
-          content: envConfigs.app_url + '/games/kino.png',
-        },
-        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:card', content: 'summary' },
         { name: 'theme-color', content: '#111311' },
       ],
       links: [
@@ -46,5 +45,5 @@ export const Route = createFileRoute('/')({
       ],
     };
   },
-  component: RadiantHome,
+  component: OptimizerHome,
 });

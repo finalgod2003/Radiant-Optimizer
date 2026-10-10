@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import {
@@ -15,8 +15,14 @@ import {
   type CheckoutSession,
   type PaymentEvent,
   type PaymentOrder,
+  type PaymentSession,
 } from '@/core/payment/types';
-import { credit, order, subscription } from '@/config/db/schema';
+import { credit, order, subscription, type Order } from '@/config/db/schema';
+import {
+  OPTIMIZER_CURRENCY,
+  OPTIMIZER_PRICE_IN_CENTS,
+  OPTIMIZER_PRODUCT_ID,
+} from '@/config/optimizer';
 import { getAllConfigs } from '@/modules/config/service';
 import { calculateCreditExpirationTime } from '@/modules/credits/service';
 import {
@@ -36,6 +42,7 @@ enum OrderStatus {
   CREATED = 'created',
   PAID = 'paid',
   FAILED = 'failed',
+  REFUNDED = 'refunded',
 }
 
 // --- Payment Manager ---
@@ -153,6 +160,17 @@ export async function createCheckout(params: {
 
   // Resolve provider-specific product ID (e.g. Creem product_ids_mapping)
   const resolvedProvider = provider || pm.getDefaultProvider()?.name;
+  const isOptimizer = paymentOrder.productId === OPTIMIZER_PRODUCT_ID;
+  if (
+    isOptimizer &&
+    (resolvedProvider !== 'stripe' ||
+      paymentOrder.type !== PaymentType.ONE_TIME ||
+      paymentOrder.price?.amount !== OPTIMIZER_PRICE_IN_CENTS ||
+      paymentOrder.price?.currency !== OPTIMIZER_CURRENCY ||
+      paymentOrder.discount)
+  ) {
+    throw new Error('Invalid optimizer checkout configuration');
+  }
   let resolvedProductId = paymentOrder.productId;
   if (resolvedProvider === 'creem' && paymentOrder.productId) {
     const mapping = configs.creem_product_ids_mapping;
@@ -177,6 +195,12 @@ export async function createCheckout(params: {
       ...paymentOrder,
       productId: resolvedProductId,
       orderNo,
+      metadata: {
+        ...paymentOrder.metadata,
+        orderNo,
+        productId: paymentOrder.productId || '',
+        ...(isOptimizer ? { licenseProduct: 'true' } : {}),
+      },
       successUrl: callbackSuccessUrl,
       cancelUrl:
         paymentOrder.cancelUrl || `${appUrl}/settings/billing?canceled=1`,
@@ -222,7 +246,11 @@ export async function handlePaymentCallback(orderNo: string) {
     .limit(1);
 
   if (!existingOrder) return;
-  if (existingOrder.status === OrderStatus.PAID) return;
+  if (
+    existingOrder.status === OrderStatus.PAID ||
+    existingOrder.status === OrderStatus.REFUNDED
+  )
+    return existingOrder.id;
 
   // Query the payment provider for latest status
   const pm = await getPaymentManager();
@@ -237,6 +265,7 @@ export async function handlePaymentCallback(orderNo: string) {
   // subscriptions are created and credits granted on synchronous return too.
   // This is important in environments where webhooks aren't reachable (e.g. localhost).
   await handleCheckoutSuccess(session, existingOrder.paymentProvider);
+  return existingOrder.id;
 }
 
 // --- Webhook handling ---
@@ -257,7 +286,8 @@ export async function handleWebhook(params: {
 
   // Route event to appropriate handler
   if (eventType === 'checkout.success') {
-    await handleCheckoutSuccess(session, params.provider);
+    const id = await handleCheckoutSuccess(session, params.provider);
+    event.orderIds = id ? [id] : [];
   } else if (eventType === 'payment.success') {
     if (
       session.paymentInfo?.subscriptionCycleType ===
@@ -265,8 +295,11 @@ export async function handleWebhook(params: {
     ) {
       await handleSubscriptionRenewal(session, params.provider);
     } else {
-      await handleCheckoutSuccess(session, params.provider);
+      const id = await handleCheckoutSuccess(session, params.provider);
+      event.orderIds = id ? [id] : [];
     }
+  } else if (eventType === 'payment.refunded') {
+    event.orderIds = await handlePaymentRefund(session, params.provider);
   } else if (eventType === 'subscribe.updated') {
     await handleSubscriptionUpdated(session, params.provider);
   } else if (eventType === 'subscribe.canceled') {
@@ -278,7 +311,10 @@ export async function handleWebhook(params: {
 
 // --- Checkout Success: update order + create subscription + grant credits ---
 
-async function handleCheckoutSuccess(session: any, provider: string) {
+export async function handleCheckoutSuccess(
+  session: PaymentSession,
+  provider: string
+) {
   // Different providers expose the session identifier under different keys.
   // We try the common shapes; for Alipay the natural key is out_trade_no
   // (which equals our orderNo and the value we stored in paymentSessionId).
@@ -295,13 +331,23 @@ async function handleCheckoutSuccess(session: any, provider: string) {
   const [existingOrder] = await db()
     .select()
     .from(order)
-    .where(and(eq(order.paymentSessionId, sessionId), isNull(order.deletedAt)))
+    .where(
+      and(
+        eq(order.paymentSessionId, sessionId),
+        eq(order.paymentProvider, provider),
+        isNull(order.deletedAt)
+      )
+    )
     .limit(1);
 
-  if (!existingOrder) return;
+  if (!existingOrder) {
+    if (session.metadata?.licenseProduct === 'true')
+      throw new Error('Optimizer order is not available yet');
+    return;
+  }
 
   // Idempotency: skip if already paid
-  if (existingOrder.status === OrderStatus.PAID) return;
+  if (existingOrder.status === OrderStatus.PAID) return existingOrder.id;
   if (
     existingOrder.status !== OrderStatus.CREATED &&
     existingOrder.status !== OrderStatus.PENDING
@@ -312,6 +358,9 @@ async function handleCheckoutSuccess(session: any, provider: string) {
   const subscriptionInfo = session.subscriptionInfo;
 
   if (session.paymentStatus === PaymentStatus.SUCCESS) {
+    if (existingOrder.productId === OPTIMIZER_PRODUCT_ID) {
+      validateOptimizerPayment(existingOrder, session, provider);
+    }
     // Prepare order update
     const orderUpdate: Record<string, any> = {
       status: OrderStatus.PAID,
@@ -328,6 +377,21 @@ async function handleCheckoutSuccess(session: any, provider: string) {
       discountCode: paymentInfo?.discountCode || null,
       discountAmount: paymentInfo?.discountAmount || null,
     };
+
+    // This product has no credits/subscription side effects. A single conditional
+    // update is atomic on D1 and prevents an older success event undoing a refund.
+    if (existingOrder.productId === OPTIMIZER_PRODUCT_ID) {
+      await db()
+        .update(order)
+        .set(orderUpdate)
+        .where(
+          and(
+            eq(order.id, existingOrder.id),
+            inArray(order.status, [OrderStatus.CREATED, OrderStatus.PENDING])
+          )
+        );
+      return existingOrder.id;
+    }
 
     // Atomically update order + create subscription + grant credits
     await db().transaction(async (tx: any) => {
@@ -413,8 +477,95 @@ async function handleCheckoutSuccess(session: any, provider: string) {
         status: OrderStatus.FAILED,
         paymentResult: JSON.stringify(session.paymentResult),
       })
-      .where(eq(order.id, existingOrder.id));
+      .where(
+        and(
+          eq(order.id, existingOrder.id),
+          inArray(order.status, [OrderStatus.CREATED, OrderStatus.PENDING])
+        )
+      );
   }
+  return existingOrder.id;
+}
+
+export function validateOptimizerPayment(
+  existingOrder: Order,
+  session: PaymentSession,
+  provider: string
+) {
+  const result = session.paymentResult || {};
+  const checkout = JSON.parse(existingOrder.checkoutResult || '{}');
+  if (
+    provider !== 'stripe' ||
+    session.provider !== provider ||
+    existingOrder.amount !== OPTIMIZER_PRICE_IN_CENTS ||
+    existingOrder.currency !== OPTIMIZER_CURRENCY ||
+    session.paymentInfo?.paymentAmount !== existingOrder.amount ||
+    session.paymentInfo.paymentCurrency !== existingOrder.currency ||
+    result.id !== existingOrder.paymentSessionId ||
+    result.mode !== 'payment' ||
+    result.payment_status !== 'paid' ||
+    result.amount_total !== existingOrder.amount ||
+    result.amount_subtotal !== existingOrder.amount ||
+    result.currency !== existingOrder.currency ||
+    typeof result.livemode !== 'boolean' ||
+    result.livemode !== checkout.livemode ||
+    result.metadata?.orderNo !== existingOrder.orderNo ||
+    result.metadata?.productId !== OPTIMIZER_PRODUCT_ID ||
+    (result.total_details?.amount_discount ?? 0) !== 0 ||
+    (result.total_details?.amount_tax ?? 0) !== 0
+  ) {
+    throw new Error('Optimizer payment does not match the authoritative order');
+  }
+}
+
+/** Full or partial Stripe refund revokes the single-device entitlement. */
+export async function handlePaymentRefund(
+  session: PaymentSession,
+  provider: string
+): Promise<string[]> {
+  if (provider !== 'stripe' || session.provider !== 'stripe') return [];
+  const result = session.paymentResult;
+  if (
+    !result ||
+    result.object !== 'charge' ||
+    !Number.isSafeInteger(result.amount_refunded) ||
+    result.amount_refunded <= 0
+  )
+    return [];
+  const orderNo = session.metadata?.orderNo;
+  const transactionId = session.paymentInfo?.transactionId;
+  if (!orderNo && !transactionId) return [];
+  const candidates: Order[] = await db()
+    .select()
+    .from(order)
+    .where(
+      and(
+        eq(order.paymentProvider, provider),
+        eq(order.productId, OPTIMIZER_PRODUCT_ID),
+        or(
+          orderNo ? eq(order.orderNo, orderNo) : undefined,
+          transactionId ? eq(order.transactionId, transactionId) : undefined
+        )
+      )
+    );
+  if (!candidates.length && session.metadata?.licenseProduct === 'true')
+    throw new Error('Refund order is not available yet');
+  const ids: string[] = [];
+  for (const candidate of candidates) {
+    const checkout = JSON.parse(candidate.checkoutResult || '{}');
+    if (
+      result.livemode !== checkout.livemode ||
+      result.currency !== candidate.currency ||
+      result.amount !== candidate.amount
+    )
+      throw new Error('Refund does not match optimizer order');
+    await db()
+      .update(order)
+      .set({ status: OrderStatus.REFUNDED })
+      .where(eq(order.id, candidate.id));
+    ids.push(candidate.id);
+  }
+  return ids;
 }
 
 // --- Subscription Renewal ---

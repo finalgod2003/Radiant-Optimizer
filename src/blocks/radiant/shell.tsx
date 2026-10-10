@@ -12,16 +12,16 @@ import '@/styles/radiant.css';
 
 export function RadiantShell({
   children,
-  home = false,
+  home: _home = false,
 }: {
   children: ReactNode;
   home?: boolean;
 }) {
   const [menu, setMenu] = useState(false);
   const sections = [
-    { id: 'library', label: m['radiant.nav.library']() },
-    { id: 'tools', label: m['radiant.nav.tools']() },
-    { id: 'about', label: m['radiant.nav.about']() },
+    { id: 'library', href: '/games', label: m['radiant.nav.library']() },
+    { id: 'tools', href: '/tools', label: m['radiant.nav.tools']() },
+    { id: 'product', href: '/features', label: m['optimizer.nav.features']() },
   ];
   const locale = getLocale();
   return (
@@ -45,7 +45,7 @@ export function RadiantShell({
             {sections.map((section) => (
               <Link
                 key={section.id}
-                href={home ? `#${section.id}` : `/#${section.id}`}
+                href={section.href}
                 onClick={() => setMenu(false)}
               >
                 {section.label}
@@ -94,12 +94,8 @@ export function RadiantShell({
             <p>{m['radiant.footer.tagline']()}</p>
           </div>
           <div className="footer-links">
-            <Link href={home ? '#library' : '/#library'}>
-              {m['radiant.nav.library']()}
-            </Link>
-            <Link href={home ? '#tools' : '/#tools'}>
-              {m['radiant.nav.tools']()}
-            </Link>
+            <Link href="/games">{m['radiant.nav.library']()}</Link>
+            <Link href="/tools">{m['radiant.nav.tools']()}</Link>
             <a href={SOURCE_POST} target="_blank" rel="noopener noreferrer">
               {m['radiant.footer.source']()}
               <ArrowUpRight size={14} />

@@ -131,7 +131,11 @@ export class StripeProvider implements PaymentProvider {
       }
 
       // allow user input promotion code
-      if (this.configs.allowPromotionCodes && !sessionParams.discounts) {
+      if (
+        this.configs.allowPromotionCodes &&
+        !sessionParams.discounts &&
+        order.metadata?.licenseProduct !== 'true'
+      ) {
         sessionParams.allow_promotion_codes = true;
       }
 
@@ -178,6 +182,9 @@ export class StripeProvider implements PaymentProvider {
 
       if (order.metadata) {
         sessionParams.metadata = order.metadata;
+        if (order.type === PaymentType.ONE_TIME) {
+          sessionParams.payment_intent_data = { metadata: order.metadata };
+        }
       }
 
       if (order.successUrl) {
@@ -275,6 +282,23 @@ export class StripeProvider implements PaymentProvider {
         paymentSession = await this.buildPaymentSessionFromSubscription(
           event.data.object as Stripe.Response<Stripe.Subscription>
         );
+      } else if (eventType === PaymentEventType.PAYMENT_REFUNDED) {
+        const charge = event.data.object as Stripe.Charge;
+        if (!charge.amount_refunded)
+          throw new WebhookIgnoredError('Charge has no refund');
+        paymentSession = {
+          provider: this.name,
+          paymentInfo: {
+            transactionId:
+              typeof charge.payment_intent === 'string'
+                ? charge.payment_intent
+                : charge.payment_intent?.id,
+            paymentAmount: charge.amount_refunded,
+            paymentCurrency: charge.currency,
+          },
+          paymentResult: charge,
+          metadata: charge.metadata,
+        };
       }
 
       if (!paymentSession) {
@@ -366,7 +390,10 @@ export class StripeProvider implements PaymentProvider {
   private mapStripeEventType(eventType: string): PaymentEventType {
     switch (eventType) {
       case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded':
         return PaymentEventType.CHECKOUT_SUCCESS;
+      case 'charge.refunded':
+        return PaymentEventType.PAYMENT_REFUNDED;
       case 'invoice.payment_succeeded':
         return PaymentEventType.PAYMENT_SUCCESS;
       case 'invoice.payment_failed':
@@ -431,7 +458,10 @@ export class StripeProvider implements PaymentProvider {
       provider: this.name,
       paymentStatus: this.mapStripeStatus(session),
       paymentInfo: {
-        transactionId: session.id,
+        transactionId:
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : session.payment_intent?.id || session.id,
         discountCode: session.discounts?.find(
           (discount) => discount.promotion_code
         )?.promotion_code as string,

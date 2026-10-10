@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
@@ -42,9 +40,9 @@ export function AppLayout({
   const { data: session, isPending } = useSession();
   const router = useRouter();
   const pathname = usePathname();
-  // Guard against a double redirect: useLocation() flips to "/sign-in" the moment
-  // we navigate (while this layout is still mounted), which would otherwise re-fire
-  // the effect and overwrite callbackUrl with the sign-in path itself.
+  // A navigation can rerender this layout before it unmounts. Guard every access
+  // gate so that route/session updates cannot enqueue the same redirect again or
+  // overwrite the original sign-in callback with the destination pathname.
   const redirectingRef = useRef(false);
 
   // Invite-only gate: needs the user's membership status (also covers social
@@ -74,17 +72,16 @@ export function AppLayout({
     (!requirePermission || isAdmin);
 
   useEffect(() => {
-    if (isPending) return;
+    if (isPending || redirectingRef.current) return;
 
     if (!session?.user) {
-      if (redirectingRef.current) return;
       redirectingRef.current = true;
       // Remember where the user was headed so sign-in can send them back.
       // pathname is already locale-free; append the live query string.
       const search =
         typeof window !== 'undefined' ? window.location.search : '';
       const callbackUrl = `${pathname}${search}`;
-      router.push(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      router.replace(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`);
       return;
     }
 
@@ -92,10 +89,8 @@ export function AppLayout({
     // (incl. social) users to the redeem page. Admins are exempt server-side.
     if (userInfoQuery.isPending) return;
     if (needsInvite) {
-      if (!redirectingRef.current) {
-        redirectingRef.current = true;
-        router.push('/redeem-invite');
-      }
+      redirectingRef.current = true;
+      router.replace('/redeem-invite');
       return;
     }
 
@@ -105,7 +100,8 @@ export function AppLayout({
     if (permissionsQuery.isPending) return;
 
     if (permissionsQuery.isError || !isAdmin) {
-      router.push(unauthorizedRedirect);
+      redirectingRef.current = true;
+      router.replace(unauthorizedRedirect);
     }
   }, [
     isPending,

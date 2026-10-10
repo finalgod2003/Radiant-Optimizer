@@ -9,6 +9,11 @@
  */
 
 import { PaymentInterval, PaymentType } from '@/core/payment/types';
+import {
+  OPTIMIZER_CURRENCY,
+  OPTIMIZER_PRICE_IN_CENTS,
+  OPTIMIZER_PRODUCT_ID,
+} from '@/config/optimizer';
 
 export type PricingPlanInfo = {
   name: string;
@@ -34,6 +39,16 @@ export type PricingProduct = {
  * Keys MUST match what the pricing UI sends as product_id.
  */
 export const pricingCatalog: Record<string, PricingProduct> = {
+  [OPTIMIZER_PRODUCT_ID]: {
+    productId: OPTIMIZER_PRODUCT_ID,
+    productName: 'Optimizer Premium',
+    planName: 'Premium Lifetime',
+    description: 'Premium for one Windows device — one-time purchase',
+    type: PaymentType.ONE_TIME,
+    priceInCents: OPTIMIZER_PRICE_IN_CENTS,
+    currency: OPTIMIZER_CURRENCY,
+    credits: 0,
+  },
   starter_monthly: {
     productId: 'starter_monthly',
     productName: 'Starter',

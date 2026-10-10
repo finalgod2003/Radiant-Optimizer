@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { isWebhookIgnored } from '@/core/payment/types';
+import { licenses } from '@/modules/licenses/service';
 import { handleWebhook } from '@/modules/payment/service';
 import { respErr, respOk } from '@/lib/resp';
 
@@ -32,6 +33,11 @@ export const Route = createFileRoute('/api/payment/notify/$provider')({
 
         try {
           const event = await handleWebhook({ req: request, provider });
+          for (const orderId of event.orderIds || []) {
+            if (event.eventType === 'payment.refunded')
+              await licenses.revokeOrder(orderId);
+            else await licenses.fulfillOrder(orderId);
+          }
 
           console.log(`Payment event [${provider}]: ${event.eventType}`);
 

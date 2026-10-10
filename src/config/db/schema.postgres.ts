@@ -635,3 +635,80 @@ export type InviteCode = typeof inviteCode.$inferSelect;
 export type NewInviteCode = typeof inviteCode.$inferInsert;
 export type UserInvite = typeof userInvite.$inferSelect;
 export type NewUserInvite = typeof userInvite.$inferInsert;
+
+// ─── Desktop product licensing ───────────────────────────────────────────────
+export const productLicense = table(
+  'product_license',
+  {
+    id: text('id').primaryKey(),
+    orderId: text('order_id')
+      .notNull()
+      .unique()
+      .references(() => order.id),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id),
+    productId: text('product_id').notNull(),
+    status: text('status').notNull().default('active'),
+    activeDeviceId: text('active_device_id'),
+    deviceSlotExpiresAt: timestamp('device_slot_expires_at', { precision: 3 }),
+    createdAt: timestamp('created_at', { precision: 3 }).notNull(),
+    updatedAt: timestamp('updated_at', { precision: 3 }).notNull(),
+  },
+  (t) => [index('idx_product_license_user').on(t.userId)]
+);
+export const deviceActivation = table(
+  'device_activation',
+  {
+    id: text('id').primaryKey(),
+    licenseId: text('license_id')
+      .notNull()
+      .references(() => productLicense.id),
+    installationId: text('installation_id').notNull(),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').unique(),
+    createdAt: timestamp('created_at', { precision: 3 }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { precision: 3 }).notNull(),
+    revokedAt: timestamp('revoked_at', { precision: 3 }),
+  },
+  (t) => [index('idx_device_activation_license').on(t.licenseId)]
+);
+export const desktopAuthGrant = table(
+  'desktop_auth_grant',
+  {
+    id: text('id').primaryKey(),
+    deviceCodeHash: text('device_code_hash').notNull().unique(),
+    userCodeHash: text('user_code_hash').notNull().unique(),
+    deviceName: text('device_name').notNull(),
+    installationId: text('installation_id').notNull(),
+    status: text('status').notNull().default('pending'),
+    licenseId: text('license_id').references(() => productLicense.id),
+    deviceId: text('device_id'),
+    approvedBy: text('approved_by').references(() => user.id),
+    createdAt: timestamp('created_at', { precision: 3 }).notNull(),
+    expiresAt: timestamp('expires_at', { precision: 3 }).notNull(),
+    lastPolledAt: timestamp('last_polled_at', { precision: 3 }),
+    consumedAt: timestamp('consumed_at', { precision: 3 }),
+  },
+  (t) => [index('idx_desktop_grant_expires').on(t.expiresAt)]
+);
+export const licenseEvent = table(
+  'license_event',
+  {
+    id: text('id').primaryKey(),
+    licenseId: text('license_id').references(() => productLicense.id),
+    actorUserId: text('actor_user_id').references(() => user.id),
+    type: text('type').notNull(),
+    detail: text('detail').notNull(),
+    createdAt: timestamp('created_at', { precision: 3 }).notNull(),
+  },
+  (t) => [index('idx_license_event_license').on(t.licenseId, t.createdAt)]
+);
+export type ProductLicense = typeof productLicense.$inferSelect;
+export type NewProductLicense = typeof productLicense.$inferInsert;
+export type DeviceActivation = typeof deviceActivation.$inferSelect;
+export type NewDeviceActivation = typeof deviceActivation.$inferInsert;
+export type DesktopAuthGrant = typeof desktopAuthGrant.$inferSelect;
+export type NewDesktopAuthGrant = typeof desktopAuthGrant.$inferInsert;
+export type LicenseEvent = typeof licenseEvent.$inferSelect;
+export type NewLicenseEvent = typeof licenseEvent.$inferInsert;

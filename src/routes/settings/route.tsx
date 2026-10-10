@@ -4,7 +4,7 @@ import {
   CreditCard,
   Home,
   Key,
-  LayoutDashboard,
+  KeyRound,
   LifeBuoy,
   Receipt,
   User,
@@ -23,9 +23,9 @@ function SettingsLayout() {
   const group = m['common.systems.settings']();
   const navItems = [
     {
-      href: '/settings',
-      label: m['settings.nav.overview'](),
-      icon: LayoutDashboard,
+      href: '/settings/licenses',
+      label: m['optimizer.licenses.nav'](),
+      icon: KeyRound,
       group,
     },
     {
@@ -74,7 +74,7 @@ function SettingsLayout() {
       navItems={navItems}
       footerNavItems={footerNavItems}
       brand={envConfigs.app_name}
-      brandHref="/settings"
+      brandHref="/settings/licenses"
     >
       <Outlet />
       <SupportWidget />

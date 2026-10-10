@@ -4,19 +4,23 @@ import { useSession } from '@/core/auth/client';
 import { envConfigs } from '@/config';
 import { SUPPORT_EMAIL } from '@/config/support';
 import { m } from '@/paraglide/messages.js';
-import { getLocale, setLocale } from '@/paraglide/runtime.js';
+import { LocaleSelector } from '@/components/locale-selector';
 import { ProductShell } from '@/components/optimizer/product-shell';
 
 export function OptimizerShell({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
-  const locale = getLocale();
   return (
     <ProductShell
       name={envConfigs.app_name}
       logo={envConfigs.app_logo}
       supportEmail={SUPPORT_EMAIL}
-      locale={locale}
-      onLocaleChange={() => setLocale(locale === 'en' ? 'zh' : 'en')}
+      localeSelector={
+        <LocaleSelector
+          variant="compact"
+          label={m['common.navigation.language']()}
+          className="op-locale"
+        />
+      }
       navigation={[
         { href: '/features', label: m['optimizer.nav.features']() },
         { href: '/pricing', label: m['optimizer.nav.pricing']() },
@@ -33,7 +37,6 @@ export function OptimizerShell({ children }: { children: ReactNode }) {
         skip: m['optimizer.nav.skip'](),
         menu: m['optimizer.nav.menu'](),
         close: m['optimizer.nav.close'](),
-        switchLocale: m['optimizer.nav.switch_locale'](),
         download: m['optimizer.nav.download'](),
         tagline: m['optimizer.nav.tagline'](),
         footer: m['optimizer.footer.description'](),

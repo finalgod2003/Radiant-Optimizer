@@ -1413,5 +1413,6 @@
   "radiant.product.recoverytab": "Recovery",
   "radiant.product.optimizetab": "Game Boost",
   "optimizer.pricing.premium.cpu": "Running-game priority and logical-processor selection, with backup and undo",
-  "radiant.product.cputab": "CPU control"
+  "radiant.product.cputab": "CPU control",
+  "common.navigation.language": "Language"
 }

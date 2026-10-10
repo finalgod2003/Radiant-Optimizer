@@ -1559,7 +1559,7 @@ html:lang(zh) .op-bottom-cta h2 {
   .op-header-actions > .op-button {
     display: none;
   }
-  .op-locale svg {
+  .op-locale > svg:first-child {
     display: none;
   }
   .op-hero {

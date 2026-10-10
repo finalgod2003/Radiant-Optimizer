@@ -13,12 +13,14 @@ import {
   X,
 } from 'lucide-react';
 
+import { useSession } from '@/core/auth/client';
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import { SUPPORT_EMAIL } from '@/config/support';
 import { m } from '@/paraglide/messages.js';
-import { getLocale, setLocale } from '@/paraglide/runtime.js';
+import { getLocale } from '@/paraglide/runtime.js';
 import { useOptimizerCatalog } from '@/blocks/optimizer/catalog-query';
+import { LocaleSelector } from '@/components/locale-selector';
 
 import '@/styles/design-previews.css';
 
@@ -41,6 +43,7 @@ function PreviewBrand() {
 
 function PreviewHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: session } = useSession();
   return (
     <header className="pv-header pv-width">
       <PreviewBrand />
@@ -55,21 +58,36 @@ function PreviewHeader() {
         <Link href="/games">{m['optimizer.nav.games']()}</Link>
         <a href="#preview-faq">{m['radiant.product.navfaq']()}</a>
       </nav>
-      <Link className="pv-header-download" href="/download">
-        {m['optimizer.nav.download']()}
-        <ArrowDown size={15} />
-      </Link>
-      <button
-        className="pv-mobile-menu"
-        aria-controls="product-navigation"
-        aria-expanded={menuOpen}
-        aria-label={
-          menuOpen ? m['radiant.nav.close']() : m['radiant.nav.menu']()
-        }
-        onClick={() => setMenuOpen(!menuOpen)}
-      >
-        {menuOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
+      <div className="pv-header-actions">
+        <LocaleSelector
+          variant="compact"
+          label={m['common.navigation.language']()}
+          className="pv-locale"
+        />
+        <Link
+          className="pv-account-link"
+          href={session?.user ? '/settings/licenses' : '/sign-in'}
+        >
+          {session?.user
+            ? m['optimizer.nav.account']()
+            : m['optimizer.nav.sign_in']()}
+        </Link>
+        <Link className="pv-header-download" href="/download">
+          {m['optimizer.nav.download']()}
+          <ArrowDown size={15} />
+        </Link>
+        <button
+          className="pv-mobile-menu"
+          aria-controls="product-navigation"
+          aria-expanded={menuOpen}
+          aria-label={
+            menuOpen ? m['radiant.nav.close']() : m['radiant.nav.menu']()
+          }
+          onClick={() => setMenuOpen(!menuOpen)}
+        >
+          {menuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
     </header>
   );
 }
@@ -279,7 +297,7 @@ function ProductFeatures() {
 function ProductPlans() {
   const catalog = useOptimizerCatalog();
   const price = catalog.data
-    ? new Intl.NumberFormat(getLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+    ? new Intl.NumberFormat(getLocale(), {
         style: 'currency',
         currency: catalog.data.currency.toUpperCase(),
       }).format(catalog.data.priceInCents / 100)
@@ -462,9 +480,11 @@ function PreviewFooter() {
         <Link href="/privacy-policy">{m['optimizer.footer.privacy']()}</Link>
         <Link href="/terms-of-service">{m['optimizer.footer.terms']()}</Link>
         <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
-        <button onClick={() => setLocale(getLocale() === 'en' ? 'zh' : 'en')}>
-          {m['optimizer.nav.switch_locale']()}
-        </button>
+        <LocaleSelector
+          variant="pill"
+          label={m['common.navigation.language']()}
+          className="pv-locale"
+        />
       </nav>
     </footer>
   );

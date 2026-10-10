@@ -8,6 +8,7 @@ import viteReact from '@vitejs/plugin-react';
 import { nitro } from 'nitro/vite';
 import { defineConfig } from 'vite';
 
+import inlangSettings from './project.inlang/settings.json';
 import { loadEnvFiles } from './src/lib/env';
 
 // Populate process.env from .env.local / .env.{NODE_ENV} / .env for the
@@ -47,6 +48,10 @@ function workersDbProvider(): string {
 
 const workersDb = isCloudflareBuild ? workersDbProvider() : '';
 const keepPostgres = workersDb === 'postgresql' || workersDb === 'postgres';
+// Put the unprefixed base locale last so it cannot swallow localized URLs.
+const prefixedLocales = inlangSettings.locales.filter(
+  (locale) => locale !== inlangSettings.baseLocale
+);
 
 export default defineConfig({
   server: {
@@ -79,25 +84,31 @@ export default defineConfig({
         // API endpoints are never locale-prefixed.
         {
           pattern: '/api/:path(.*)?',
-          localized: [
-            ['en', '/api/:path(.*)?'],
-            ['zh', '/api/:path(.*)?'],
-          ],
+          localized: inlangSettings.locales.map((locale): [string, string] => [
+            locale,
+            '/api/:path(.*)?',
+          ]),
         },
         // Bare locale homes match without a trailing-slash redirect.
         {
           pattern: '/',
           localized: [
-            ['zh', '/zh'],
-            ['en', '/'],
+            ...prefixedLocales.map((locale): [string, string] => [
+              locale,
+              `/${locale}`,
+            ]),
+            [inlangSettings.baseLocale, '/'],
           ],
         },
-        // "as-needed" prefix: zh under /zh, en (default) unprefixed.
+        // All translated pages use a prefix; English stays unprefixed.
         {
           pattern: '/:path(.*)?',
           localized: [
-            ['zh', '/zh/:path(.*)?'],
-            ['en', '/:path(.*)?'],
+            ...prefixedLocales.map((locale): [string, string] => [
+              locale,
+              `/${locale}/:path(.*)?`,
+            ]),
+            [inlangSettings.baseLocale, '/:path(.*)?'],
           ],
         },
       ],

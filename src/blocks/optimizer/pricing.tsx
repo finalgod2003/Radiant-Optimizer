@@ -45,7 +45,7 @@ export function OptimizerPricing() {
     onError: (error: Error) => toast.error(optimizerErrorMessage(error)),
   });
   const price = catalog.data
-    ? new Intl.NumberFormat(getLocale() === 'zh' ? 'zh-CN' : 'en-US', {
+    ? new Intl.NumberFormat(getLocale(), {
         style: 'currency',
         currency: catalog.data.currency.toUpperCase(),
       }).format(catalog.data.priceInCents / 100)

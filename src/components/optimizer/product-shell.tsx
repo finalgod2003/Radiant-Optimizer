@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ArrowDownToLine, ArrowUpRight, Globe2, Menu, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpRight, Menu, X } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 
@@ -14,8 +14,7 @@ export function ProductShell({
   supportEmail,
   navigation,
   account,
-  locale,
-  onLocaleChange,
+  localeSelector,
   labels,
 }: {
   children: ReactNode;
@@ -24,13 +23,11 @@ export function ProductShell({
   supportEmail: string;
   navigation: NavigationItem[];
   account: NavigationItem;
-  locale: string;
-  onLocaleChange: () => void;
+  localeSelector: ReactNode;
   labels: {
     skip: string;
     menu: string;
     close: string;
-    switchLocale: string;
     download: string;
     tagline: string;
     footer: string;
@@ -78,15 +75,7 @@ export function ProductShell({
             </Link>
           </nav>
           <div className="op-header-actions">
-            <button
-              className="op-locale"
-              type="button"
-              onClick={onLocaleChange}
-              aria-label={labels.switchLocale}
-            >
-              <Globe2 size={15} />
-              <span>{locale === 'en' ? 'EN' : '中文'}</span>
-            </button>
+            {localeSelector}
             <Link className="op-account-link" href={account.href}>
               {account.label}
             </Link>

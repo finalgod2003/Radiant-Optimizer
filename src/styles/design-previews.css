@@ -166,6 +166,28 @@ body:has(.design-previews) .tsqd-open-btn-container {
 .pv-header nav a:hover {
   color: var(--pv-accent);
 }
+.pv-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.pv-account-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pv-account-link:hover {
+  color: var(--pv-accent);
+}
+.preview-site .pv-locale {
+  border-color: var(--pv-line);
+  color: var(--pv-ink);
+  background: transparent;
+  font-size: 12px;
+}
 .pv-header-download {
   display: inline-flex;
   align-items: center;
@@ -1564,12 +1586,13 @@ body:has(.design-previews) .tsqd-open-btn-container {
     font-size: 10px;
   }
 }
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
   .preview-site .pv-header {
+    flex-wrap: wrap;
     min-height: 82px;
     padding-block: 18px;
   }
-  .pv-header-download {
+  .pv-header-actions {
     margin-left: auto;
   }
   .pv-mobile-menu {
@@ -1578,6 +1601,9 @@ body:has(.design-previews) .tsqd-open-btn-container {
   }
   .pv-header nav {
     display: none;
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
     padding-top: 12px;
   }
   .pv-header nav.is-open {
@@ -1585,6 +1611,16 @@ body:has(.design-previews) .tsqd-open-btn-container {
   }
 }
 @media (max-width: 480px) {
+  .preview-site .pv-header {
+    gap: 14px 8px;
+  }
+  .pv-header .pv-brand {
+    width: 100%;
+  }
+  .pv-header-actions {
+    width: 100%;
+    gap: 16px;
+  }
   .pv-header-download {
     display: none;
   }

@@ -162,6 +162,12 @@ export function OptimizerPricing() {
                       ? m['optimizer.pricing.buy']()
                       : m['optimizer.pricing.sign_in_buy']()}
             </button>
+            <p className="op-plan-refund">
+              {m['optimizer.pricing.refund_summary']()}{' '}
+              <Link href="/terms-of-service">
+                {m['optimizer.pricing.refund_terms']()}
+              </Link>
+            </p>
             <ul>
               {premiumFeatures.map((feature) => (
                 <li key={feature}>

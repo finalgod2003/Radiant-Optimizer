@@ -10,7 +10,25 @@ public static class GameProfiles
         GameId.CounterStrike2 => "Counter-Strike 2", GameId.Fortnite => "Fortnite", GameId.Valorant => "VALORANT",
         _ => throw new ArgumentOutOfRangeException(nameof(game))
     };
-    public static IReadOnlyList<GamePreset> GetPresets(GameId game) => game switch
+    public static IReadOnlyList<GamePreset> GetPresets(GameId game)
+        => PerformancePresets(game).Concat(LegacyPresets(game)).ToArray();
+
+    public static bool IsFreePreset(GameId game, string id) => PerformancePresets(game).Any(p => p.Id == id);
+
+    private static IReadOnlyList<GamePreset> PerformancePresets(GameId game) => game switch
+    {
+        GameId.CounterStrike2 => [new("performance", "Performance · Free", "VSync off; MSAA off to reduce GPU work. Edges can look rougher. Resolution, shadows and input remain unchanged.")],
+        GameId.Fortnite or GameId.Valorant => new[] { new GamePreset("performance", "Performance · keep current cap · Free",
+            game == GameId.Fortnite ? "VSync off; reduce existing shadow, effects, postprocess and foliage quality. Keep the current FPS cap, resolution and input settings."
+                : "Lower existing material and detail quality. Keep the current FPS limit, resolution, input and account settings.") }.Concat(new[] { 60, 90, 120, 144, 165, 240, 360 }
+            .Select(cap => new GamePreset($"performance-{cap}", $"Performance · {cap} FPS · Free",
+                game == GameId.Fortnite
+                    ? $"{cap} FPS cap; VSync off; lower existing shadow, effects, postprocess and foliage settings. Textures set to Low. Resolution and input are preserved."
+                    : $"{cap} FPS always cap; lower existing material and detail settings. Input, resolution and account settings are preserved."))).ToArray(),
+        _ => throw new ArgumentOutOfRangeException(nameof(game))
+    };
+
+    private static IReadOnlyList<GamePreset> LegacyPresets(GameId game) => game switch
     {
         GameId.CounterStrike2 => Array.AsReadOnly(new[]
         {
@@ -33,8 +51,12 @@ public static class GameProfiles
     internal static (string Format, byte[] Target, IReadOnlyList<GameSettingChange> Changes, IReadOnlyList<string> Warnings)
         Transform(GameId game, byte[] bytes, string presetId)
     {
+        if (presetId.StartsWith("custom-", StringComparison.Ordinal)) return CustomGameProfiles.Transform(game, bytes, presetId);
         if (!GetPresets(game).Any(p => p.Id == presetId)) throw new GameProfileException("Unknown preset.");
         var competitive = presetId == "competitive";
+        var performance = IsFreePreset(game, presetId);
+        var keepCap = performance && presetId == "performance";
+        var cap = performance && !keepCap ? int.Parse(presetId["performance-".Length..], CultureInfo.InvariantCulture) : competitive ? 144 : 120;
         var changes = new List<GameSettingChange>();
         var warnings = new List<string> { "Close the game before applying or restoring. Cloud sync or the game may later replace local settings. Check the in-game menu after launch; no FPS improvement is guaranteed." };
         var document = game == GameId.CounterStrike2 ? ConfigDocument.ValveVideo(bytes) : ConfigDocument.Ini(bytes);
@@ -50,8 +72,8 @@ public static class GameProfiles
                 Integer(document.Get("video.cfg", "setting.defaultresheight"), 200, 16384);
                 OneOf(document.Get("video.cfg", "setting.mat_vsync"), "0", "1");
                 OneOf(document.Get("video.cfg", "setting.msaa_samples"), "0", "2", "4", "8");
-                document.Set("video.cfg", "setting.mat_vsync", competitive ? "0" : "1", changes);
-                document.Set("video.cfg", "setting.msaa_samples", competitive ? "2" : "4", changes);
+                document.Set("video.cfg", "setting.mat_vsync", competitive || performance ? "0" : "1", changes);
+                document.Set("video.cfg", "setting.msaa_samples", performance ? "0" : competitive ? "2" : "4", changes);
                 format = $"CS2 video.cfg / Version {version}";
                 warnings.Add("CS2 presets change only VSync and MSAA; fps_max, shadows, resolution and input configuration are preserved.");
                 break;
@@ -62,10 +84,14 @@ public static class GameProfiles
                 if (document.Has(FortniteSection, "Version")) OneOf(document.Get(FortniteSection, "Version"), "5");
                 Boolean(document.Get(FortniteSection, "bUseVSync"));
                 Number(document.Get(FortniteSection, "FrameRateLimit"), 0, 1000);
-                document.Set(FortniteSection, "bUseVSync", competitive ? "False" : "True", changes);
-                document.Set(FortniteSection, "FrameRateLimit", competitive ? "144.000000" : "120.000000", changes);
+                document.Set(FortniteSection, "bUseVSync", competitive || performance ? "False" : "True", changes);
+                if (!keepCap) document.Set(FortniteSection, "FrameRateLimit", cap.ToString("F6", CultureInfo.InvariantCulture), changes);
                 foreach (var key in new[] { "sg.ShadowQuality", "sg.TextureQuality", "sg.EffectsQuality" })
-                    OptionalQuality(document, "ScalabilityGroups", key, 4, competitive ? "1" : "2", changes, warnings);
+                    OptionalQuality(document, "ScalabilityGroups", key, 4,
+                        performance ? key == "sg.TextureQuality" ? "1" : "0" : competitive ? "1" : "2", changes, warnings);
+                if (performance)
+                    foreach (var key in new[] { "sg.PostProcessQuality", "sg.FoliageQuality" })
+                        OptionalQuality(document, "ScalabilityGroups", key, 4, "0", changes, warnings);
                 format = "Fortnite GameUserSettings / FortniteReleaseVersion 14";
                 break;
             }
@@ -74,16 +100,21 @@ public static class GameProfiles
                 var version = OneOf(document.Get("Settings", "LocalSettingsVersion"), "5", "7");
                 Boolean(document.Get("Settings", "EAresBoolSettingName::LimitFramerateAlways"));
                 Number(document.Get("Settings", "EAresFloatSettingName::MaxFramerateAlways"), 1, 1000);
-                document.Set("Settings", "EAresBoolSettingName::LimitFramerateAlways", "True", changes);
-                document.Set("Settings", "EAresFloatSettingName::MaxFramerateAlways", competitive ? "144.000000" : "120.000000", changes);
+                if (!keepCap)
+                {
+                    document.Set("Settings", "EAresBoolSettingName::LimitFramerateAlways", "True", changes);
+                    document.Set("Settings", "EAresFloatSettingName::MaxFramerateAlways", cap.ToString("F6", CultureInfo.InvariantCulture), changes);
+                }
                 foreach (var key in new[] { "EAresIntSettingName::MaterialQuality", "EAresIntSettingName::DetailQuality" })
-                    OptionalQuality(document, "Settings", key, 2, competitive ? "0" : "1", changes, warnings);
+                    OptionalQuality(document, "Settings", key, 2, competitive || performance ? "0" : "1", changes, warnings);
                 format = $"VALORANT RiotUserSettings / LocalSettingsVersion {version}";
                 warnings.Add("VALORANT uses RiotUserSettings.ini for the always-on cap. VSync, GameUserSettings.ini, roaming/account data, crosshair and sensitivity are not changed.");
                 break;
             }
             default: throw new GameProfileException("Unknown game.");
         }
+        if (performance && !keepCap && game != GameId.CounterStrike2)
+            warnings.Add($"The {cap} FPS cap is a ceiling, not a promised frame rate. Choose a sustainable cap for your display and hardware; lower caps can reduce GPU load and heat.");
         return (format, document.Render(), changes.AsReadOnly(), warnings.AsReadOnly());
     }
 

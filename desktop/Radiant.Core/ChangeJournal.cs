@@ -27,8 +27,20 @@ public sealed record JournalEntry(
 
     private static string Describe(string id, SettingValue value) => id switch
     {
+        "power.ac-performance-mode" => "AC power mode: " + (value.Data switch
+        {
+            "ded574b5-45a0-4f42-8737-46345c09c238" => "Best performance",
+            "961cc777-2547-4f9d-8174-7d86181b8a7a" => "Best power efficiency",
+            "00000000-0000-0000-0000-000000000000" => "Balanced",
+            _ => value.ToDisplayString()
+        }),
         "interface.client-animations" => "Interface animations: " + (value.Data == "1" ? "On" : "Off"),
         "interface.window-animations" => "Window transitions: " + (value.Data == "1" ? "On" : "Off"),
+        "gaming.auto-game-mode" => "Automatic Game Mode: " + GamePreference(value),
+        "gaming.allow-auto-game-mode" => "Game Mode permission: " + GamePreference(value),
+        "gaming.game-dvr" => "Game recording: " + GamePreference(value),
+        "gaming.app-capture" => "App capture: " + GamePreference(value),
+        "gaming.historical-capture" => "Background recording: " + GamePreference(value),
         "power.active-plan" => "Power plan: " + (value.Data switch
         {
             "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" => "High performance",
@@ -38,6 +50,9 @@ public sealed record JournalEntry(
         }),
         _ => $"{id}: {value.ToDisplayString()}",
     };
+
+    private static string GamePreference(SettingValue value) => !value.Exists ? "Windows default"
+        : value.Kind == SettingValueKind.DWord && value.Data is "0" or "1" ? value.Data == "1" ? "On" : "Off" : value.ToDisplayString();
 
     public void Validate()
     {

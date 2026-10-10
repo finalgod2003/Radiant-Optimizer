@@ -17,6 +17,8 @@ public sealed partial class MainWindow : Window
     private readonly ProductSettings settings;
     private readonly WindowsOptimizer optimizer;
     private readonly GameProfileEngine games;
+    private readonly ProcessTuningService cpuTuning;
+    private readonly NativeGameProcesses gameProcesses = new();
     private readonly LicenseClient licenses;
     private readonly string dataDirectory;
     private readonly CancellationTokenSource lifetime = new();
@@ -41,6 +43,7 @@ public sealed partial class MainWindow : Window
         this.optimizer = optimizer;
         this.dataDirectory = dataDirectory;
         games = new GameProfileEngine(Path.Combine(dataDirectory, "game-profiles"));
+        cpuTuning = new ProcessTuningService(Path.Combine(dataDirectory, "cpu-recovery"));
         licenses = new LicenseClient(settings.ServerUrl, dataDirectory, ProductSettings.TrustedKeys());
         chinese = File.Exists(Path.Combine(dataDirectory, "language.zh"));
         Title = settings.AppName;
@@ -63,12 +66,13 @@ public sealed partial class MainWindow : Window
         var brand = Ui.Stack(brandMark, Ui.Text(settings.AppName, 18, bold: true), edition);
         brand.Margin = new Thickness(24, 28, 18, 36);
         DockPanel.SetDock(brand, Dock.Top); sidebar.Children.Add(brand);
-        var bottom = Ui.Stack(Ui.Text("0.3.0 · " + settings.Channel, 11, Ui.Muted),
+        var bottom = Ui.Stack(Ui.Text("0.5.0 · " + settings.Channel, 11, Ui.Muted),
             Ui.Button("EN / 中文", () => _ = ToggleLanguageAsync()));
         bottom.Margin = new Thickness(24, 20, 24, 24);
         DockPanel.SetDock(bottom, Dock.Bottom); sidebar.Children.Add(bottom);
         navigation.Margin = new Thickness(14, 0, 14, 0);
-        sidebar.Children.Add(navigation);
+        sidebar.Children.Add(new ScrollViewer { Content = navigation, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         shell.Children.Add(sidebar);
         var main = new DockPanel { Margin = new Thickness(34, 28, 34, 24) };
         Grid.SetColumn(main, 1); shell.Children.Add(main);
@@ -101,7 +105,7 @@ public sealed partial class MainWindow : Window
     private string L(string en, string zh) => chinese ? zh : en;
     public async Task InitializeAsync(bool refreshLicense = true, string initialPage = "overview")
     {
-        if (initialPage is not ("overview" or "optimize" or "games" or "monitoring" or "processes" or "network" or "tools" or "recovery" or "account"))
+        if (initialPage is not ("overview" or "optimize" or "games" or "cpu" or "monitoring" or "processes" or "network" or "tools" or "recovery" or "account"))
             throw new ArgumentException("Unknown preview page.");
         currentPage = initialPage;
         UpdateEdition();
@@ -119,11 +123,11 @@ public sealed partial class MainWindow : Window
     {
         navigation.Children.Clear();
         (string Id, string En, string Zh, string Number)[] items = [
-            ("overview", "Overview", "电脑总览", "01"), ("optimize", "Windows settings", "Windows 设置", "02"),
-            ("games", "Game profiles", "游戏配置", "03"), ("monitoring", "Live monitoring", "高级监控", "04"),
-            ("processes", "Processes", "进程监控", "05"), ("network", "Connection", "网络诊断", "06"),
-            ("tools", "Input lab", "输入实验室", "07"), ("recovery", "Recovery", "恢复中心", "08"),
-            ("account", "Your license", "我的授权", "09")];
+            ("overview", "Overview", "电脑总览", "01"), ("optimize", "Game Boost", "Windows 设置", "02"),
+            ("games", "Game profiles", "游戏配置", "03"), ("cpu", "CPU control", "CPU 控制", "04"),
+            ("monitoring", "Live monitoring", "高级监控", "05"), ("processes", "Processes", "进程监控", "06"),
+            ("network", "Connection", "网络诊断", "07"), ("tools", "Input lab", "输入实验室", "08"),
+            ("recovery", "Recovery", "恢复中心", "09"), ("account", "Your license", "我的授权", "10")];
         foreach (var item in items)
         {
             var button = Ui.Button(item.Number + "   " + L(item.En, item.Zh), () => _ = NavigateAsync(item.Id));
@@ -181,6 +185,7 @@ public sealed partial class MainWindow : Window
                 case "overview": await OverviewAsync(token); break;
                 case "optimize": await OptimizeAsync(token); break;
                 case "games": await GamesAsync(token); break;
+                case "cpu": await CpuControlAsync(token); break;
                 case "monitoring": await MonitoringAsync(token); break;
                 case "processes": await ProcessesAsync(token); break;
                 case "network": NetworkPage(token); break;
@@ -225,7 +230,7 @@ public sealed partial class MainWindow : Window
                 Ui.Text(L("Capacity: ", "容量：") + Ui.Bytes(disk.TotalBytes), 12, Ui.Muted))));
         }
         page.Children.Add(Ui.Row(AsyncButton(L("Refresh readings", "刷新读数"), () => NavigateAsync("overview")),
-            Ui.Button(L("Review Windows settings →", "查看 Windows 设置 →"), () => _ = NavigateAsync("optimize"), true)));
+            Ui.Button(L("Open Game Boost →", "查看 Windows 设置 →"), () => _ = NavigateAsync("optimize"), true)));
     }
 
     private string TweakTitle(TweakStatus tweak) => tweak.Id switch
@@ -235,66 +240,6 @@ public sealed partial class MainWindow : Window
         "client-animations" => "Reduce interface animations", "window-animations" => "Instant window transitions",
         _ => tweak.Title
     };
-
-    private async Task OptimizeAsync(CancellationToken token)
-    {
-        var tweaks = await optimizer.ReadTweaksAsync(token);
-        var plans = await optimizer.ReadPowerPlansAsync(token);
-        token.ThrowIfCancellationRequested();
-        Heading("Choose your next change.", "选择下一项更改。", "Review current values and save the original before applying a supported setting.",
-            "查看当前值，先保存原值，再应用支持的设置。");
-        var enableChanges = new CheckBox { Content = L("Enable experimental changes for this session", "为本次会话启用实验性设置更改"),
-            IsChecked = experimentalEnabled, Foreground = Ui.Foreground, Margin = new Thickness(0, 8, 0, 0) };
-        enableChanges.Checked += (_, _) => { experimentalEnabled = true; _ = NavigateAsync("optimize"); };
-        enableChanges.Unchecked += (_, _) => { experimentalEnabled = false; _ = NavigateAsync("optimize"); };
-        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text("BACK UP → APPLY → VERIFY → RESTORE", 11, Ui.Accent, true),
-            Ui.Text("Animation adjustments use Windows interfaces. Every adjustment saves its original before writing. One-click recovery is available on the Recovery page. Game preferences and power-plan changes remain opt-in for this session.", 13, Ui.Muted), enableChanges)));
-        foreach (var tweak in tweaks.Where(item => item.Id != "power-plan"))
-        {
-            var text = L(tweak.Description, tweak.Id switch
-            {
-                "game-mode" => "控制 Windows 游戏模式。它的效果依赖当前系统和游戏。",
-                "game-recording" => "控制游戏录制功能。关闭后会影响使用此功能的录制工作流。",
-                "background-capture" => "控制后台游戏录像。关闭后无法保留之前时刻的自动录制。",
-                _ => tweak.Description
-            });
-            var body = Ui.Stack(Ui.Row(Ui.Text(TweakTitle(tweak), 19, bold: true), Ui.Text("FREE", 10, Ui.Accent)),
-                Ui.Text(text, 13, Ui.Muted), Ui.Text(L("Current: ", "当前：") + tweak.CurrentValue, 13),
-                Ui.Text(L("Proposed: ", "拟设置：") + tweak.TargetValue, 13, Ui.Accent));
-            if (tweak.RestartRequired) body.Children.Add(Ui.Text(L("Sign out or restart may be required.", "可能需要注销或重启。"), 12, Ui.Muted));
-            if (!tweak.Supported) body.Children.Add(Ui.Text(tweak.UnavailableReason ?? L("Not supported on this PC", "此电脑不支持"), 12, Ui.Muted));
-            var apply = AsyncButton(L("Review & apply", "确认并应用"), async () =>
-            {
-                if (MessageBox.Show(L("Save the original value and apply this change?", "保存原值并应用这项更改？")
-                        + "\n\n" + TweakTitle(tweak) + "\n" + tweak.CurrentValue + " → " + tweak.TargetValue,
-                        settings.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-                var result = await ChangeSettingsAsync(() => optimizer.ApplyAsync(tweak.Id, cancellationToken: token));
-                await NavigateAsync("optimize"); ShowChangeResult(result);
-            }, true);
-            apply.IsEnabled = tweak.Supported && (tweak.Category == "Interface" || experimentalEnabled);
-            body.Children.Add(apply); page.Children.Add(Ui.Card(body));
-        }
-        var power = Ui.Stack(Ui.Row(Ui.Text(L("Power plans", "电源计划"), 20, bold: true), Ui.Text("PREMIUM", 10, Ui.Accent)),
-            Ui.Text(L("Choose an existing Windows plan. Power use, fan noise and battery life can change.",
-                "切换已有的 Windows 电源计划。耗电、风扇噪音和续航可能随之改变。"), 13, Ui.Muted));
-        foreach (var plan in plans)
-        {
-            var button = AsyncButton((plan.Active ? "● " : "○ ") + plan.Name, async () =>
-            {
-                if (!licenses.CachedStatus().IsPremium) { await NavigateAsync("account"); return; }
-                if (MessageBox.Show(L("Switch the active power plan to ", "将当前电源计划切换为 ") + plan.Name + "?",
-                    settings.AppName, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-                var result = await ChangeSettingsAsync(() => optimizer.ApplyAsync("power-plan", plan.Id, token));
-                await NavigateAsync("optimize"); ShowChangeResult(result);
-            });
-            button.Margin = new Thickness(0, 6, 0, 0);
-            button.IsEnabled = experimentalEnabled && !plan.Active;
-            power.Children.Add(button);
-        }
-        if (!licenses.CachedStatus().IsPremium) power.Children.Add(Ui.Text(L("Activate Premium to switch plans. Existing backups can always be restored.",
-            "激活 Premium 后可切换计划。恢复已有备份始终免费。"), 12, Ui.Muted));
-        page.Children.Add(Ui.Card(power));
-    }
 
     private void ShowChangeResult(ChangeRecord result)
     {
@@ -321,57 +266,6 @@ public sealed partial class MainWindow : Window
             var memory = Ui.Text(Ui.Bytes(process.MemoryBytes), 14, Ui.Muted); Grid.SetColumn(memory, 2); row.Children.Add(memory);
             var card = Ui.Card(row, 12); card.Margin = new Thickness(0, 0, 0, 5); page.Children.Add(card);
         }
-    }
-
-    private async Task RecoveryAsync(CancellationToken token)
-    {
-        var history = await optimizer.ReadHistoryAsync(token);
-        token.ThrowIfCancellationRequested();
-        Heading("Every change has a record.", "每次更改都有记录。", "Restore saved original values. This remains available without Premium.",
-            "恢复已保存的原始值。此能力始终免费。");
-        var outstanding = history.Count(item => item.Status is not ("restored" or "unchanged"));
-        var defaultData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OptimizerPreview");
-        var backupLabel = string.Equals(Path.GetFullPath(dataDirectory), Path.GetFullPath(defaultData), StringComparison.OrdinalIgnoreCase)
-            ? @"%LOCALAPPDATA%\OptimizerPreview\recovery" : "Custom local data folder / recovery";
-        var restoreAll = AsyncButton("Restore all Windows changes", async () =>
-        {
-            var results = await ChangeSettingsAsync(() => optimizer.RestoreAllAsync(token));
-            await NavigateAsync("recovery");
-            var remaining = results.Count(r => r.Status != ChangeStatus.Restored);
-            Notice(remaining == 0 ? "All recorded Windows changes restored and verified."
-                : $"{results.Count - remaining} restored; {remaining} still need attention. Review the records below. External changes were not overwritten.", remaining > 0);
-        }, true);
-        restoreAll.IsEnabled = outstanding > 0;
-        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text("A way back, in one click.", 22, bold: true),
-            Ui.Text($"{outstanding} Windows changes still need restoration. Saved originals are retained after recovery. Restore runs newest first; game-file backups remain separate below.", 13, Ui.Muted),
-            restoreAll, Ui.Text("Backups: " + backupLabel + "\nKeep this folder to retain recovery. These are setting backups, not a full Windows image.", 11, Ui.Muted))));
-        if (history.Count == 0) page.Children.Add(Ui.Card(Ui.Stack(Ui.Text(L("Your history starts with your first change.", "应用第一项设置后，这里就会出现记录。"), 20),
-            Ui.Text(L("Original values are saved before supported settings are written.", "支持的设置会在写入前保存原始值。"), 13, Ui.Muted))));
-        foreach (var change in history.OrderByDescending(item => item.CreatedAt).Take(60))
-        {
-            var body = Ui.Stack(Ui.Text(change.TweakId switch { "client-animations" => "Reduce interface animations", "window-animations" => "Instant window transitions", "power-plan" => "Power plan", "game-mode" => "Game Mode", "game-recording" => "Game recording", "background-capture" => "Background capture", _ => change.TweakId }, 19, bold: true),
-                Ui.Text(change.CreatedAt.ToLocalTime().ToString("MMM d, yyyy · HH:mm:ss zzz", CultureInfo.InvariantCulture) + " · " + (change.Status == "restored" ? "Restored · verified" : change.Status), 12, Ui.Muted),
-                Ui.Text(L("Original: ", "原始值：") + change.Before, 12), Ui.Text(L("Changed to: ", "修改为：") + change.After, 12, Ui.Muted));
-            if (change.Error is not null) body.Children.Add(Ui.Text(change.Error, 12, Ui.Brush("#F0AE7C")));
-            if (change.Status is not "restored" and not "unchanged")
-                body.Children.Add(AsyncButton(L("Restore original", "恢复原值"), async () =>
-                {
-                    if (MessageBox.Show(L("Restore the saved original value? External changes will be checked first.",
-                        "恢复保存的原值？操作前会检查是否有其他程序更改过设置。"), settings.AppName, MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-                    var result = await ChangeSettingsAsync(() => optimizer.RestoreAsync(change.Id, cancellationToken: token));
-                    await NavigateAsync("recovery"); ShowChangeResult(result);
-                }));
-            if (change.Status == ChangeStatus.Conflict)
-                body.Children.Add(AsyncButton("Review conflicting restore…", async () =>
-                {
-                    if (MessageBox.Show("Windows has a value outside this change record.\n\n" + change.Error + "\n\nSaved original: " + change.Before
-                        + "\n\nBack up the current external values, then restore these originals?", settings.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes) return;
-                    var result = await ChangeSettingsAsync(() => optimizer.RestoreAsync(change.Id, force: true, cancellationToken: token));
-                    await NavigateAsync("recovery"); ShowChangeResult(result);
-                }));
-            page.Children.Add(Ui.Card(body));
-        }
-        await AddGameRecoveryAsync(token);
     }
 
     private void OpenTrustedBrowser(Uri destination)

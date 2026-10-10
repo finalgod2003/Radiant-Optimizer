@@ -55,7 +55,7 @@ The production site at `https://radiantoptimizer.xyz` uses GA4 property `Radiant
 - Durable original-value journal, exact game-file backups, readback verification and conflict-aware restoration. Recovery is always free. Monitoring data and game backups stay local and are not automatically uploaded.
 - Website sign-in, product/download pages, short-code device approval, license/device management and admin revocation.
 - Stripe one-time payment confirmation and refund revocation; single active device, seven-day signed offline lease, DPAPI-protected local credentials. No real merchant payment has been performed.
-- Checkout remains disabled until signing and Stripe merchant settings are configured. The $57.77 catalog value is a development reference price, not a completed commercial launch.
+- Premium lifetime access is priced at USD 19.90. Checkout requires license signing and a configured Stripe or Waffo provider; Waffo production sales also require merchant approval and production credentials. See [Waffo setup](docs/waffo-payment-setup.md) for the sandbox verification and remaining launch steps.
 
 The retained browser library at `/games` (Chinese: `/zh/games`) includes:
 

@@ -53,12 +53,14 @@ try
     using var buyer = Browser();
     using var other = Browser();
     using var anonymous = Browser();
-    // The harness obtains the expected public trust roots once from its explicit
-    // loopback test server. Subsequent native verification never trusts cached key data.
+    // Pin the same public keys used by the packaged app before reading the endpoint.
+    var trustedKeys = JsonSerializer.Deserialize<SigningKey[]>(Required("OPTIMIZER_TEST_TRUSTED_KEYS"), LeaseVerifier.Json)
+        ?? throw new InvalidOperationException("The desktop build supplied no signing keys.");
+    Check(trustedKeys.Length > 0, "integration client pins the actual desktop build public keys");
     var keySet = await Data(await Send(anonymous, HttpMethod.Get, "/api/desktop/keys"));
-    var trustedKeys = JsonSerializer.Deserialize<SigningKey[]>(keySet.GetProperty("keys").GetRawText(), LeaseVerifier.Json)
+    var serverKeys = JsonSerializer.Deserialize<SigningKey[]>(keySet.GetProperty("keys").GetRawText(), LeaseVerifier.Json)
         ?? throw new InvalidOperationException("Test server supplied no signing keys.");
-    Check(trustedKeys.Length > 0, "integration harness fixes its expected server public keys before activation");
+    Check(serverKeys.Any(serverKey => trustedKeys.Any(key => key == serverKey)), "server signing key matches the packaged client trust roots");
     await Login(buyer, "OPTIMIZER_TEST_EMAIL", "OPTIMIZER_TEST_PASSWORD");
     await Login(other, "OPTIMIZER_TEST_OTHER_EMAIL", "OPTIMIZER_TEST_OTHER_PASSWORD");
     var origin = server.GetLeftPart(UriPartial.Authority);

@@ -25,6 +25,15 @@ public partial class App : Application
             var dataDirectory = Path.GetFullPath(Argument("--data-directory") ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OptimizerPreview"));
             var engine = new WindowsOptimizer(dataDirectory);
+            if (Argument("--verify-gaming-roundtrip") is string gamingReport)
+            {
+                var result = await Task.Run(() => WindowsRoundtripVerification.RunAsync(
+                    Path.Combine(dataDirectory, "gaming-verification-" + Guid.NewGuid().ToString("N")), gaming: true));
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(gamingReport))!);
+                await File.WriteAllTextAsync(gamingReport, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+                Shutdown(0);
+                return;
+            }
             if (Argument("--restore-settings-output") is string recoveryPath)
             {
                 var result = await Task.Run(() => engine.RestoreAllAsync());

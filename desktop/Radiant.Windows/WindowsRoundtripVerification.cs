@@ -6,7 +6,7 @@ namespace Radiant.Windows;
 /// invoke it. Backups are retained and the finally path restores every test change.</summary>
 public static class WindowsRoundtripVerification
 {
-    public static async Task<object> RunAsync(string testDirectory)
+    public static async Task<object> RunAsync(string testDirectory, bool gaming = false)
     {
         var adapter = new WindowsSettingsAdapter();
         var engine = new OptimizationEngine(adapter, new FileChangeJournal(Path.Combine(testDirectory, "recovery")));
@@ -14,8 +14,16 @@ public static class WindowsRoundtripVerification
         var plans = PowerPlans.Read();
         var alternative = plans.FirstOrDefault(p => !p.Active);
         var original = new Dictionary<string, SettingValue>();
-        var actions = new List<(string Id, string? Option)> { ("client-animations", null), ("window-animations", null) };
-        if (alternative is not null) actions.Add(("power-plan", alternative.Id));
+        var skipped = new List<string>();
+        var actions = gaming ? new List<(string Id, string? Option)> { ("gaming-ready", null) }
+            : new List<(string Id, string? Option)> { ("client-animations", null), ("window-animations", null) };
+        if (gaming)
+        {
+            var status = (await adapter.ReadTweaksAsync(default)).Single(t => t.Id == "gaming-power");
+            if (status.Supported) actions.Add(("gaming-power", null));
+            else skipped.Add("gaming-power: " + status.UnavailableReason);
+        }
+        else if (alternative is not null) actions.Add(("power-plan", alternative.Id));
         foreach (var (id, option) in actions)
             foreach (var target in (await adapter.PrepareAsync(id, option, default)).Targets)
                 original[target.SettingId] = await adapter.ReadAsync(target.SettingId, default);
@@ -50,7 +58,8 @@ public static class WindowsRoundtripVerification
             immutableBackups = Directory.EnumerateFiles(Path.Combine(testDirectory, "recovery"), "*.original").Count(),
             applied = applied.Select(r => new { r.TweakId, r.Status, r.Before, r.After }),
             restored = restored.Select(r => new { r.TweakId, r.Status }),
-            powerPlanSwitchTested = alternative is not null,
+            powerPlanSwitchTested = !gaming && alternative is not null,
+            gamingProfileTested = gaming, skipped,
             journalDirectory = Path.Combine(testDirectory, "recovery"),
         };
     }

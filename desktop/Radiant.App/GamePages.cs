@@ -16,13 +16,14 @@ public sealed partial class MainWindow
         var enable = new CheckBox { Content = L("Enable experimental configuration writes for this session", "在本次会话启用实验性配置写入"),
             IsChecked = experimentalEnabled, Foreground = Ui.Foreground, Margin = new Thickness(0, 0, 0, 14) };
         enable.Click += (_, _) => { experimentalEnabled = enable.IsChecked == true; };
-        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text(L("Preview is free. Original files are backed up before every write.",
+        page.Children.Add(Ui.Card(Ui.Stack(Ui.Text(L("Performance presets are Free. Every original file is backed up first.",
                 "预览免费。每次写入前备份原始文件。"), 17, bold: true),
-            Ui.Text(L("Apply requires Premium. Recovery remains free. Unknown formats, running games and changed files are blocked. Presets leave bindings, sensitivity and resolution alone.",
+            Ui.Text(L("Use Performance presets for free. Premium adds your own saved settings and Competitive / Balanced presets. Preview every change; resolution, bindings and sensitivity stay untouched. Recovery is always free.",
                 "应用需要 Premium，恢复始终免费。未知格式、运行中的游戏或文件变化会阻止写入。预设保留按键、灵敏度和分辨率。"), 13, Ui.Muted), enable)));
         var chooseGame = new ComboBox { Width = 180, SelectedIndex = 0, Margin = new Thickness(0, 0, 12, 12) };
         foreach (var game in Enum.GetValues<GameId>())
             chooseGame.Items.Add(new ComboBoxItem { Content = GameName(game), Tag = game });
+        chooseGame.SelectedIndex = 0;
         var results = Ui.Stack();
         page.Children.Add(Ui.Row(AsyncButton(L("Scan local profiles", "扫描本地配置"), () => NavigateAsync("games")), chooseGame,
             AsyncButton(L("Choose config file…", "选择配置文件…"), async () =>
@@ -42,6 +43,13 @@ public sealed partial class MainWindow
                 Ui.Text(L("Start one of the supported games and save its video settings, then close it and scan again. You can select a supported file manually. Steam discovery reads local userdata; it does not scan every drive.",
                     "先运行受支持的游戏并保存画面设置，退出后重新扫描，也可以手动选择受支持的文件。Steam 检测只读取本地 userdata，不扫描所有磁盘。"), 13, Ui.Muted))));
         foreach (var file in files.Take(40)) results.Children.Add(GameFileCard(file, token));
+        if (files.Count == 0)
+        {
+            var studio = Ui.Stack();
+            void SelectStudio() { studio.Children.Clear(); if (chooseGame.SelectedItem is ComboBoxItem { Tag: GameId game }) studio.Children.Add(CustomProfileEditor(game, null, token)); }
+            chooseGame.SelectionChanged += (_, _) => SelectStudio();
+            SelectStudio(); page.Children.Add(studio);
+        }
         page.Children.Add(Ui.Text(L("Compatibility: CS2 video.cfg v15/16; Fortnite release schema 14; VALORANT local settings v5/7. Later or unknown schemas are read-only until validated.",
             "支持格式：CS2 video.cfg v15/16；Fortnite 配置格式 14；VALORANT 本地设置 v5/7。后续或未知格式需完成验证后才开放写入。"), 12, Ui.Muted));
     }
@@ -59,38 +67,47 @@ public sealed partial class MainWindow
             return Ui.Card(body);
         }
         var previewPanel = Ui.Stack();
-        var options = Ui.Row();
-        foreach (var preset in GameProfiles.GetPresets(file.Game))
+        var presets = GameProfiles.GetPresets(file.Game);
+        var selection = new ComboBox { Width = 305, HorizontalAlignment = HorizontalAlignment.Left, SelectedIndex = 0,
+            Margin = new Thickness(0, 0, 12, 12) };
+        foreach (var preset in presets) selection.Items.Add(new ComboBoxItem { Content = preset.Name, Tag = preset.Id });
+        var previewButton = AsyncButton("Preview selected preset", async () =>
         {
-            var id = preset.Id;
-            var label = id == "competitive" ? L("Competitive preview", "竞技预设预览") : L("Balanced preview", "均衡预设预览");
-            options.Children.Add(AsyncButton(label, async () =>
-            {
+            if (selection.SelectedItem is not ComboBoxItem { Tag: string id }) return;
+            var preset = presets.Single(p => p.Id == id);
+            await PreviewGameProfileAsync(file, id, preset.Name, preset.Description, previewPanel, token);
+        });
+        body.Children.Add(selection); body.Children.Add(previewButton); body.Children.Add(previewPanel);
+        body.Children.Add(new Expander { Header = "Custom settings & saved profiles · Premium", Foreground = Ui.Accent,
+            Content = CustomProfileEditor(file.Game, file, token), Margin = new Thickness(0, 16, 0, 0) });
+        return Ui.Card(body);
+    }
+
+    private async Task PreviewGameProfileAsync(GameConfigFile file, string id, string name, string description,
+        StackPanel previewPanel, CancellationToken token)
+    {
                 var preview = await games.PreviewAsync(file, id, token);
                 token.ThrowIfCancellationRequested();
                 previewPanel.Children.Clear();
-                previewPanel.Children.Add(Ui.Text(id == "competitive" ? L("Lower visual cost; reduced detail or smoothness can be visible.", "降低画面开销，细节或画面平滑度可能下降。")
-                    : L("Moderate visual detail; VSync where supported can add latency.", "保留适中画面细节；受支持的垂直同步可能增加延迟。"), 13, Ui.Muted));
+                previewPanel.Children.Add(Ui.Text(name, 18, Ui.Accent, true));
+                previewPanel.Children.Add(Ui.Text(description, 13, Ui.Muted));
+                previewPanel.Children.Add(Ui.Text($"{preview.Changes.Count} setting changes · Original file retained byte for byte", 12, Ui.Muted));
                 foreach (var change in preview.Changes)
                     previewPanel.Children.Add(Ui.Text($"{change.Section} / {change.Key}\n{change.Before}  →  {change.After}", 13, Ui.Accent));
                 foreach (var warning in preview.Warnings) previewPanel.Children.Add(Ui.Text(warning, 12, Ui.Muted));
                 previewPanel.Children.Add(AsyncButton(L("Back up & apply profile", "备份并应用预设"), async () =>
                 {
                     if (!experimentalEnabled) throw new InvalidOperationException(L("Enable experimental writes before applying.", "请先启用本次会话的实验性写入。"));
-                    if (!licenses.CachedStatus().IsPremium) { await NavigateAsync("account"); return; }
+                    if (!GameProfiles.IsFreePreset(file.Game, id) && !licenses.CachedStatus().IsPremium) { await NavigateAsync("account"); return; }
                     if (MessageBox.Show(L("Back up the exact original file and apply these changes? Close the game before continuing.",
                             "备份原始文件并应用这些更改？请先关闭游戏。") + "\n\n" + preview.Path + "\n\n" +
                             string.Join("\n", preview.Changes.Select(change => $"{change.Key}: {change.Before} → {change.After}")),
                             settings.AppName, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
                     token.ThrowIfCancellationRequested();
-                    if (!experimentalEnabled || !licenses.CachedStatus().IsPremium) return;
-                    var result = await games.ApplyAsync(preview, token);
+                    if (!experimentalEnabled || (!GameProfiles.IsFreePreset(file.Game, id) && !licenses.CachedStatus().IsPremium)) return;
+                    var result = await ChangeSettingsAsync(() => games.ApplyAsync(preview, token));
                     await NavigateAsync("games"); ShowGameChange(result);
                 }, true));
-            }));
-        }
-        body.Children.Add(options); body.Children.Add(previewPanel);
-        return Ui.Card(body);
     }
 
     private void ShowGameChange(GameChangeRecord change)
@@ -109,7 +126,7 @@ public sealed partial class MainWindow
             "尚未应用游戏预设。首次应用后，这里会显示原始文件备份。"), 13, Ui.Muted));
         foreach (var change in history.OrderByDescending(item => item.CreatedAt).Take(60))
         {
-            var body = Ui.Stack(Ui.Text(change.GameName + " · " + change.PresetId, 19, bold: true),
+            var body = Ui.Stack(Ui.Text(change.GameName + " · " + (change.PresetId.StartsWith("custom-v1:", StringComparison.Ordinal) ? "Custom settings" : change.PresetId), 19, bold: true),
                 Ui.Text(change.Path, 12, Ui.Muted), Ui.Text(change.CreatedAt.ToLocalTime().ToString("g") + " · " + change.Status, 12, Ui.Accent));
             if (change.Error is not null) body.Children.Add(Ui.Text(change.Error, 12, Ui.Brush("#F0AE7C")));
             if (change.Status.ToString().ToLowerInvariant() is not "restored" and not "unchanged")
@@ -118,12 +135,12 @@ public sealed partial class MainWindow
                     if (MessageBox.Show(L("Restore the backed-up original file? The game must be closed. External changes will be checked.",
                             "恢复备份的原始文件？请先关闭游戏。会检查文件是否被其他程序更改。"), settings.AppName,
                             MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-                    var result = await games.RestoreAsync(change.Id, cancellationToken: token);
+                    var result = await ChangeSettingsAsync(() => games.RestoreAsync(change.Id, cancellationToken: token));
                     if (result.Status.ToString().Equals("Conflict", StringComparison.OrdinalIgnoreCase) &&
                         MessageBox.Show(L("This file has changed since the profile was applied. Replacing it discards those later edits. Restore the saved original anyway?",
                             "此文件在应用预设后又发生了变化。替换将丢弃后来的编辑，仍要恢复备份原件吗？") + "\n\n" + change.Path,
                             settings.AppName, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
-                        result = await games.RestoreAsync(change.Id, force: true, cancellationToken: token);
+                        result = await ChangeSettingsAsync(() => games.RestoreAsync(change.Id, force: true, cancellationToken: token));
                     await NavigateAsync("recovery"); ShowGameChange(result);
                 }));
             page.Children.Add(Ui.Card(body));

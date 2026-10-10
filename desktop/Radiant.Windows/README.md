@@ -26,12 +26,24 @@ They persist with `SPIF_UPDATEINIFILE` and send a bounded `WM_SETTINGCHANGE`
 notification. They do not require the experimental gaming-session opt-in.
 These are desktop preferences, not measured FPS boosts.
 
+Version 0.4 adds two Free gaming actions:
+
+- `gaming-ready`: the five allowlisted Game Mode/recording values above, backed
+  up together before the first write. Targets are Game Mode on and capture off.
+- `gaming-power`: `power.ac-performance-mode`, via the documented Windows 11
+  `PowerGetUserConfiguredACPowerMode` / `PowerSetUserConfiguredACPowerMode` APIs.
+  Requests Best Performance only after checking AC is connected. Recovery can
+  restore the saved AC GUID even on battery. Battery policy is never written.
+  Windows firmware/thermal signals may override the effective mode.
+
 Gaming actions are exposed only on Windows build 19041 or later. An unexpected
 existing registry type disables new applications, and a machine Game DVR policy
 disables recording actions. This is a runtime capability check, **not a completed
-Windows compatibility certification**. Target-OS writes and functional effects
-still need isolated Windows acceptance tests; the preview UI requires an explicit
-session opt-in. No settings are automatically applied on startup or scan.
+Windows compatibility certification**. Native gaming writes/recovery passed on
+the development PC; game performance effects still require per-game measurement.
+Each Windows adjustment needs review and confirmation. No settings are
+automatically applied on startup or scan. Game-file writes additionally retain
+their session opt-in.
 
 All registry changes use the current user. No process elevation, arbitrary
 commands, HKLM writes, power-plan creation, individual power-setting tuning,
@@ -75,6 +87,8 @@ The active GUID is read back. Permission or policy failures are returned explici
 - Bulk restore uses one lease, newest first. A failed/conflicting newer record
   blocks older operations on the same settings; unrelated settings can recover.
   Individual restore also enforces this ordering. Game files use a separate engine.
+- The WPF Restore all changes command coordinates both journals. An error in
+  Windows recovery does not suppress attempting game-file recovery, or vice versa.
 - The journal stores only the fixed settings above and operation metadata. It is
   never uploaded. It contains no account credentials or license tokens.
 

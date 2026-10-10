@@ -8,7 +8,7 @@ import { preparePresentMon } from './prepare-presentmon.mjs';
 
 if (process.platform !== 'win32')
   throw new Error('This packaging script currently targets Windows x64.');
-const version = '0.3.0';
+const version = '0.5.0';
 const freePreview = process.argv.includes('--free-preview');
 const serverUrl = new URL(
   process.env.OPTIMIZER_DESKTOP_SERVER_URL ||
@@ -113,23 +113,31 @@ dotnet([
 ]);
 writeFileSync(
   resolve(output, 'READ-ME.txt'),
-  `${settings.appName} ${version} / Windows x64 preview\n\nExtract this archive, then open Optimizer.exe.\nConfigured website: ${settings.serverUrl}\n\nThis local preview is not code-signed. Interface animation adjustments are opt-in per action. Game preferences, power plans and game configuration writes retain their session opt-in requirements. See WHAT-IS-NEW.txt for the current scope.\nBackups and activation data: %LOCALAPPDATA%\\OptimizerPreview\nTo stop using the app, restore any changes you want to undo, close it, and remove the extracted folder. Keep the backup directory until recovery is no longer needed.\n\nGame profiles: supported CS2, Fortnite and VALORANT config formats only. Preview is free; apply requires Premium. Game must be closed. Recovery remains free.\nMonitoring: CPU/RAM, supported Windows GPU counters and NVIDIA NVML sensors. CPU temperature is not collected. PresentMon 2.6.0 reads ETW presentation events for selected processes; permissions and rendering compatibility affect availability. FPS capture/overlay/export requires Premium. Overlay supports windowed/borderless mode, not guaranteed exclusive fullscreen.\nPresentMon is bundled under tools/PresentMon with its MIT license. No service or driver is installed; no game process is injected.\nNVIDIA driver tuning, bandwidth and GPU stress tests remain outside this preview.\n`
+  `${settings.appName} ${version} / Windows x64 preview\n\nExtract this archive, then open Optimizer.exe.\nConfigured website: ${settings.serverUrl}\n\nThis local preview is not code-signed. Game Boost reviews each Windows change before applying. Game-file writes additionally require session opt-in. Every recorded setting/file is backed up first. See WHAT-IS-NEW.txt for the current scope.\nBackups and activation data: %LOCALAPPDATA%\\OptimizerPreview\nTo stop using the app, restore any changes you want to undo, close it, and remove the extracted folder. Keep the backup directory until recovery is no longer needed.\n\nGame profiles: supported CS2, Fortnite and VALORANT config formats only. Performance presets and their FPS cap choices are Free; Competitive and Balanced application requires Premium. Game must be closed. Recovery remains free.\nMonitoring: CPU/RAM, supported Windows GPU counters and NVIDIA NVML sensors. CPU temperature is not collected. PresentMon 2.6.0 reads ETW presentation events for selected processes; permissions and rendering compatibility affect availability. FPS capture/overlay/export requires Premium. Overlay supports windowed/borderless mode, not guaranteed exclusive fullscreen.\nPresentMon is bundled under tools/PresentMon with its MIT license. No service or driver is installed; no game process is injected.\nNVIDIA driver tuning, bandwidth and GPU stress tests remain outside this preview.\n`
 );
 mkdirSync(resolve('public/downloads'), { recursive: true });
 writeFileSync(
   resolve(output, 'WHAT-IS-NEW.txt'),
   `${settings.appName} ${version}
 
-New: Reduce interface animations; instant minimize/restore transitions.
-These use documented Windows interfaces. Each change is optional, backs up the original first, and reads back the Windows result.
-Recovery: Restore all Windows changes in one click, newest first. Conflicting external changes require individual review; failed operations keep their backups.
-Original backups are stored separately from execution status and are retained after restoration. Old 0.2 records remain readable.
-Backups: %LOCALAPPDATA%\\OptimizerPreview\\recovery
-These backups cover recorded settings, not a Windows system image. Game-file backups remain separately listed in Recovery.
-Existing game recording preferences and power-plan changes retain their session opt-in and entitlement requirements.
-No fixed FPS improvement is promised. Native acceptance tested both animation preferences and an installed power-plan switch followed by restoration on the development PC; other Windows configurations may differ.
+New in 0.5.0: Premium custom game profiles and CPU control.
+Game profiles: choose individual supported settings, leave the others unchanged, save a named setup and load it for a fresh preview. CS2: VSync/MSAA. Fortnite: frame cap, VSync and existing graphics quality fields. VALORANT: always-on frame cap and existing material/detail quality. Custom-profile application and saving require Premium. Exact original game files are backed up before applying. Existing Free Performance presets remain Free.
+CPU control: inspect supported running CS2/Fortnite/VALORANT processes, review Normal/Above normal priority and optional logical-processor selection. Changes affect that exact process instance only. Originals are persisted before every write. Restore in Recovery while the game runs; process exit naturally ends those process settings. PID reuse never targets a replacement process. Core selection requires a single processor group; protected games may refuse access. Restricting CPUs can reduce performance; compare your own runs. No game injection, security changes or automatic elevation.
+Recovery now includes Windows, game files and CPU settings in one free action, even without Premium. Exact originals and external conflicts remain available.
 
-${freePreview ? 'This free local build has no activation keys. Premium activation is unavailable; free system tools and existing recovery remain usable.' : 'Premium activation uses the licensing service configured in desktop-settings.local.json.'}
+Included from 0.4.1: Premium device activation is available in builds with embedded public verification keys. Open Your license, select Activate this PC, then sign into the configured website and approve the device with your existing Premium license. Online refresh and offline verification use signed seven-day leases; backups and recovery stay Free.
+
+Included from 0.4: Game Boost and game Performance presets.
+Gaming essentials: enable Windows Game Mode and turn off built-in game/background recording in one backed-up operation. Game clips become unavailable until restored.
+Plugged-in performance: request Best Performance through the supported Windows 11 AC power-mode API. Higher heat/fan noise/power use are possible. Battery policy is unchanged; thermal and firmware constraints can override the effective result.
+Free Performance game presets: CS2 VSync/MSAA off; Fortnite lower existing shadows/effects/postprocess/foliage and low textures; VALORANT low material/detail. Default preserves the current FPS cap. Fortnite/VALORANT also offer optional 60/90/120/144/165/240/360 FPS ceilings. A cap is not a promised frame rate.
+Only validated configuration schemas are writable. Preview exact differences, close the game, then back up and apply. Resolution, bindings and sensitivity stay unchanged. Existing Competitive/Balanced profiles retain Premium requirements.
+Recovery: Restore all changes covers both Windows settings and original game files, newest first within each journal. External edits and running games block the affected restoration; other independent records can still recover. Forced game-file restoration also backs up the external file first.
+Backups: %LOCALAPPDATA%\\OptimizerPreview\\recovery, \\game-profiles and \\cpu-recovery. Saved presets live in \\saved-game-profiles.
+Keep the backup folders. Old journals remain readable. These are recorded-setting/file backups, not a full Windows system image.
+No fixed FPS improvement is promised. Native Windows apply/reload/restore acceptance and exact-byte game fixture tests are documented in the repository; actual gains depend on the game and PC.
+
+${freePreview ? 'This free local build has no activation keys. Premium activation is unavailable; Free Game Boost, Performance game presets and recovery remain usable.' : 'Premium activation uses the licensing service configured in desktop-settings.local.json.'}
 `
 );
 const filename = `optimizer-${version}-win-x64-preview.zip`;

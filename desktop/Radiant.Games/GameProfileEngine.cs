@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace Radiant.Games;
 
 /// <summary>Conservative file adapters. The caller owns licensing and explicit user consent.</summary>
-public sealed class GameProfileEngine
+public sealed partial class GameProfileEngine
 {
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -138,11 +138,12 @@ public sealed class GameProfileEngine
         }, cancellationToken);
 
     public Task<GameChangeRecord> RestoreAsync(string changeId, bool force = false, CancellationToken cancellationToken = default)
-        => Exclusive(() => Restore(changeId, force, cancellationToken), cancellationToken);
+        => Exclusive(() => RestoreOrdered(changeId, force, cancellationToken), cancellationToken);
 
     private GameChangeRecord Restore(string id, bool force, CancellationToken cancellationToken)
     {
         var record = Load(id);
+        if (record.Status is GameChangeStatus.Restored or GameChangeStatus.Unchanged) return record;
         var path = SafeFiles.ConfigPath(record.Game, record.Path);
         EnsureGameClosed(record.Game);
         var folder = Folder(record.Id);

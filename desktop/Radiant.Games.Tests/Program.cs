@@ -5,6 +5,16 @@ using Radiant.Games;
 
 var checks = new (string Name, Func<Task> Run)[]
 {
+    ("custom profiles change selected fields only and restore after restart", CustomRoundtrip),
+    ("custom profile identifiers reject unknown fields, bounds and noncanonical encodings", CustomBounds),
+    ("saved custom profiles survive restart without applying a game change", SavedProfiles),
+    ("custom profiles preserve optional keys and reject stale previews", CustomConflicts),
+    ("free performance presets change supported graphics and restore exact bytes", PerformancePresets),
+    ("performance frame caps reject arbitrary values and preserve absent quality keys", PerformanceBounds),
+    ("bulk game recovery restores multiple presets newest first", BulkGameRestore),
+    ("bulk conflict protects older changes while other game files restore", BulkGameConflict),
+    ("individual game recovery refuses an older outstanding record", GameRestoreOrder),
+    ("a running game blocks only its own bulk recovery", BulkRunningGame),
     ("CS2 both presets alter only validated VSync/MSAA and restore bytes", () => Roundtrip(GameId.CounterStrike2)),
     ("Fortnite both presets alter frame cap and supported existing quality", () => Roundtrip(GameId.Fortnite)),
     ("VALORANT both presets preserve sensitivity, binds and account settings", () => Roundtrip(GameId.Valorant)),
@@ -55,6 +65,135 @@ foreach (var (name, run) in checks)
 }
 Console.WriteLine($"{checks.Length - failures}/{checks.Length} checks passed. Every configuration write was confined to generated temporary fixture directories.");
 return failures == 0 ? 0 : 1;
+
+static async Task CustomRoundtrip()
+{
+    foreach (var profile in new[] {
+        new CustomGameProfile(GameId.CounterStrike2, Msaa: 2),
+        new CustomGameProfile(GameId.Fortnite, FrameCap: 180, TextureQuality: 3),
+        new CustomGameProfile(GameId.Valorant, FrameCap: 200, DetailQuality: 2) })
+    {
+        using var f = new Fixture(profile.Game); var original = File.ReadAllBytes(f.Path);
+        var id = CustomGameProfiles.Encode(profile); Equal(profile, CustomGameProfiles.Decode(id));
+        True(!GameProfiles.IsFreePreset(profile.Game, id));
+        var preview = await f.Preview(id);
+        True(preview.Changes.All(c => !c.Key.Contains("vsync", StringComparison.OrdinalIgnoreCase)
+            && c.Key != "bUseVSync" && !c.Key.Contains("MaterialQuality", StringComparison.Ordinal)));
+        var applied = await f.Engine.ApplyAsync(preview); Equal(GameChangeStatus.Applied, applied.Status);
+        Bytes(original, File.ReadAllBytes(f.Backup(applied.Id)));
+        Equal(GameChangeStatus.Restored, (await f.NewEngine().RestoreAllAsync()).Single().Status);
+        Bytes(original, File.ReadAllBytes(f.Path));
+    }
+}
+static async Task CustomBounds()
+{
+    using var f = new Fixture(GameId.Fortnite);
+    foreach (var profile in new[] { new CustomGameProfile(GameId.Fortnite, FrameCap: 0),
+        new CustomGameProfile(GameId.Fortnite, FrameCap: 1001), new CustomGameProfile(GameId.Fortnite, Msaa: 4),
+        new CustomGameProfile(GameId.CounterStrike2, Msaa: 3), new CustomGameProfile(GameId.Valorant, VSync: true),
+        new CustomGameProfile(GameId.Valorant, MaterialQuality: 3), new CustomGameProfile(GameId.Fortnite) })
+        await Throws<GameProfileException>(() => Task.FromResult(CustomGameProfiles.Encode(profile)));
+    var id = CustomGameProfiles.Encode(new(GameId.Fortnite, FrameCap: 175));
+    foreach (var invalid in new[] { id + ":0", id.Replace("175", "0175"), id.Replace("custom-v1", "custom-v2"),
+        CustomGameProfiles.Encode(new(GameId.CounterStrike2, Msaa: 4)) })
+        await Throws<GameProfileException>(() => f.Preview(invalid));
+}
+static async Task SavedProfiles()
+{
+    using var f = new Fixture(GameId.Fortnite); var original = File.ReadAllBytes(f.Path);
+    var folder = Path.Combine(Path.GetDirectoryName(f.Path)!, "saved-profiles");
+    var store = new SavedGameProfiles(folder);
+    var profile = new CustomGameProfile(GameId.Fortnite, FrameCap: 175, TextureQuality: 3);
+    var saved = store.Save("My 175 Hz setup", profile);
+    Equal(saved, new SavedGameProfiles(folder).List(GameId.Fortnite).Single());
+    Equal(0, store.List(GameId.Valorant).Count); Bytes(original, File.ReadAllBytes(f.Path));
+    await Throws<GameProfileException>(() => Task.FromResult(store.Save(" ", profile)));
+    File.WriteAllText(Path.Combine(folder, saved.Id + ".json"), "{}");
+    await Throws<GameProfileException>(() => Task.FromResult(store.List(GameId.Fortnite)));
+}
+static async Task CustomConflicts()
+{
+    using var f = new Fixture(GameId.Fortnite);
+    var id = CustomGameProfiles.Encode(new(GameId.Fortnite, FrameCap: 175, FoliageQuality: 3));
+    var preview = await f.Preview(id);
+    True(!preview.Changes.Any(c => c.Key == "sg.FoliageQuality"));
+    True(preview.Warnings.Any(w => w.Contains("sg.FoliageQuality", StringComparison.Ordinal)));
+    File.AppendAllText(f.Path, "; edited since preview\n"); var external = File.ReadAllBytes(f.Path);
+    await Throws<GameProfileException>(() => f.Engine.ApplyAsync(preview)); Bytes(external, File.ReadAllBytes(f.Path));
+}
+
+static async Task PerformancePresets()
+{
+    foreach (var game in Enum.GetValues<GameId>())
+        foreach (var preset in GameProfiles.GetPresets(game).Where(p => GameProfiles.IsFreePreset(game, p.Id)))
+        {
+            using var f = new Fixture(game); var original = File.ReadAllBytes(f.Path);
+            var preview = await f.Preview(preset.Id); True(preview.Changes.Count > 0);
+            True(preview.Changes.All(c => !c.Key.Contains("Resolution", StringComparison.OrdinalIgnoreCase) && !c.Key.Contains("Sensitivity", StringComparison.OrdinalIgnoreCase)));
+            var change = await f.Engine.ApplyAsync(preview); Equal(GameChangeStatus.Applied, change.Status);
+            Bytes(original, File.ReadAllBytes(f.Backup(change.Id)));
+            if (game == GameId.CounterStrike2) True(preview.Changes.Any(c => c.Key == "setting.msaa_samples" && c.After == "0"));
+            else if (preset.Id != "performance") Contains("=" + preset.Id["performance-".Length..] + ".000000", File.ReadAllText(f.Path));
+            Equal(GameChangeStatus.Restored, (await f.NewEngine().RestoreAllAsync()).Single().Status); Bytes(original, File.ReadAllBytes(f.Path));
+        }
+}
+static async Task PerformanceBounds()
+{
+    using var f = new Fixture(GameId.Fortnite);
+    await Throws<GameProfileException>(() => f.Preview("performance-9999"));
+    True(!GameProfiles.IsFreePreset(GameId.Fortnite, "performance-9999"));
+    True(!GameProfiles.IsFreePreset(GameId.Fortnite, "competitive"));
+    var keepCap = await f.Preview("performance");
+    True(keepCap.Changes.All(c => c.Key != "FrameRateLimit"));
+    using var valorant = new Fixture(GameId.Valorant);
+    True((await valorant.Preview("performance")).Changes.All(c => !c.Key.Contains("Framerate", StringComparison.OrdinalIgnoreCase)));
+    var preview = await f.Preview("performance-165");
+    True(preview.Changes.Any(c => c.Key == "FrameRateLimit" && c.After == "165.000000"));
+    True(!preview.Changes.Any(c => c.Key == "sg.FoliageQuality"));
+    True(preview.Warnings.Any(w => w.Contains("sg.FoliageQuality", StringComparison.Ordinal)));
+}
+static async Task BulkGameRestore()
+{
+    using var f = new Fixture(GameId.Fortnite); var original = File.ReadAllBytes(f.Path);
+    var first = await f.Engine.ApplyAsync(await f.Preview("competitive"));
+    var second = await f.Engine.ApplyAsync(await f.Preview("performance-240"));
+    var result = await f.NewEngine().RestoreAllAsync(); Equal(2, result.Count);
+    Equal(second.Id, result[0].Id); Equal(first.Id, result[1].Id);
+    True(result.All(r => r.Status == GameChangeStatus.Restored)); Bytes(original, File.ReadAllBytes(f.Path));
+    Equal(0, (await f.Engine.RestoreAllAsync()).Count);
+}
+static async Task BulkGameConflict()
+{
+    using var f = new Fixture(GameId.Fortnite);
+    await f.Engine.ApplyAsync(await f.Preview("competitive"));
+    await f.Engine.ApplyAsync(await f.Preview("performance-240"));
+    File.AppendAllText(f.Path, "; external edits\n"); var external = File.ReadAllBytes(f.Path);
+    var otherPath = f.Add(GameId.Valorant); var original = File.ReadAllBytes(otherPath);
+    var other = new GameConfigFile(GameId.Valorant, "VALORANT", otherPath, "", true, null);
+    await f.Engine.ApplyAsync(await f.Engine.PreviewAsync(other, "performance-165"));
+    var results = await f.Engine.RestoreAllAsync(); Equal(3, results.Count);
+    Equal(1, results.Count(r => r.Status == GameChangeStatus.Restored));
+    Bytes(external, File.ReadAllBytes(f.Path)); Bytes(original, File.ReadAllBytes(otherPath));
+}
+static async Task GameRestoreOrder()
+{
+    using var f = new Fixture(GameId.Fortnite);
+    var first = await f.Engine.ApplyAsync(await f.Preview("competitive"));
+    await f.Engine.ApplyAsync(await f.Preview("performance-240")); var current = File.ReadAllBytes(f.Path);
+    await Throws<GameProfileException>(() => f.Engine.RestoreAsync(first.Id, force: true)); Bytes(current, File.ReadAllBytes(f.Path));
+}
+static async Task BulkRunningGame()
+{
+    using var f = new Fixture(GameId.Fortnite);
+    await f.Engine.ApplyAsync(await f.Preview("performance-144"));
+    var otherPath = f.Add(GameId.Valorant); var otherOriginal = File.ReadAllBytes(otherPath);
+    await f.Engine.ApplyAsync(await f.Engine.PreviewAsync(new(GameId.Valorant, "VALORANT", otherPath, "", true, null), "performance-165"));
+    f.Guard.Blocked = true; f.Guard.BlockedGame = GameId.Fortnite;
+    var results = await f.Engine.RestoreAllAsync(); Equal(1, results.Count(r => r.Status == GameChangeStatus.Failed));
+    Equal(1, results.Count(r => r.Status == GameChangeStatus.Restored)); Bytes(otherOriginal, File.ReadAllBytes(otherPath));
+    True(results.All(r => File.Exists(f.Backup(r.Id)))); f.Guard.Blocked = false;
+    Equal(GameChangeStatus.Restored, (await f.NewEngine().RestoreAllAsync()).Single().Status);
+}
 
 static async Task Roundtrip(GameId game)
 {
@@ -408,7 +547,8 @@ static async Task Throws<T>(Func<Task> action) where T : Exception
 sealed class Guard : IGameProcessGuard
 {
     public bool Blocked;
-    public string? GetBlockingReason(GameId _) => Blocked ? "Test game is running." : null;
+    public GameId? BlockedGame;
+    public string? GetBlockingReason(GameId game) => Blocked && (BlockedGame is null || BlockedGame == game) ? "Test game is running." : null;
 }
 sealed class UnknownProcessState : IGameProcessGuard
 {

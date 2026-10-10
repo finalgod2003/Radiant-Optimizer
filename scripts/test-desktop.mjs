@@ -8,7 +8,11 @@ dotnet([
   'Release',
 ]);
 
-for (const project of ['Radiant.Games.Tests', 'Radiant.Monitoring.Tests']) {
+for (const project of [
+  'Radiant.Games.Tests',
+  'Radiant.Monitoring.Tests',
+  'Radiant.Processes.Tests',
+]) {
   dotnet([
     'run',
     '--project',

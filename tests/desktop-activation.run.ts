@@ -20,6 +20,18 @@ let fixture:
   | undefined;
 
 try {
+  // Test the same pinned public keys embedded by the desktop build, rather than
+  // making the test client trust whichever key the HTTP endpoint returns.
+  const trustedKeys = JSON.parse(
+    await readFile(
+      resolve('desktop/Radiant.App/trusted-keys.local.json'),
+      'utf8'
+    )
+  );
+  if (!Array.isArray(trustedKeys) || trustedKeys.length === 0)
+    throw new Error(
+      'Build an activation-enabled client before running HTTP integration.'
+    );
   fixture = await createDesktopActivationFixture(serverUrl);
   console.log(
     'Local test accounts and a marked purchase fixture are ready. No real payment was made.'
@@ -41,6 +53,8 @@ try {
           ...process.env,
           DOTNET_CLI_TELEMETRY_OPTOUT: '1',
           DOTNET_NOLOGO: '1',
+          OPTIMIZER_LICENSE_PRIVATE_KEY: undefined,
+          OPTIMIZER_TEST_TRUSTED_KEYS: JSON.stringify(trustedKeys),
           OPTIMIZER_TEST_SERVER: serverUrl,
           OPTIMIZER_TEST_EMAIL: fixture!.buyer.email,
           OPTIMIZER_TEST_PASSWORD: fixture!.buyer.password,

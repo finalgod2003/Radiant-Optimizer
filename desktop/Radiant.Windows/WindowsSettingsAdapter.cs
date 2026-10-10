@@ -24,6 +24,9 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
 
     private static readonly TweakDefinition[] Definitions =
     [
+        new("gaming-ready", "Gaming essentials", "Enable Windows Game Mode and turn off built-in game and background recording in one backed-up operation. This can reduce capture work if recording was enabled. Windows game clips will be unavailable until restored; other recording apps are unchanged. Restart running games after applying.", "Gaming", false,
+            [new("gaming.auto-game-mode", SettingValue.DWord(1)), new("gaming.allow-auto-game-mode", SettingValue.DWord(1)),
+             new("gaming.game-dvr", SettingValue.DWord(0)), new("gaming.app-capture", SettingValue.DWord(0)), new("gaming.historical-capture", SettingValue.DWord(0))]),
         new("client-animations", "Reduce interface animations", "Disable Windows client-area animations in apps that respect this preference. Supported interfaces become less animated; this does not promise more game FPS. Original preference is backed up and can be restored without restarting Windows.", "Interface", false,
             [new(VisualPreferences.ClientAnimations, SettingValue.DWord(0))]),
         new("window-animations", "Instant window transitions", "Disable minimize/restore animations so windows appear and disappear immediately. This changes desktop transitions, not application processing speed. The original preference is saved before applying.", "Interface", false,
@@ -40,6 +43,13 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureWindows();
+        if (tweakId == "gaming-power")
+        {
+            if (option is not null) throw new ArgumentException("AC performance does not accept an option.", nameof(option));
+            GamingPowerMode.EnsureCanApply();
+            return Task.FromResult(new OptimizationPlan(tweakId,
+                [new(GamingPowerMode.SettingId, SettingValue.String(GamingPowerMode.BestPerformance.ToString("D")))], false));
+        }
         if (tweakId == "power-plan")
         {
             if (!Guid.TryParseExact(option, "D", out var identifier)
@@ -60,6 +70,7 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
         cancellationToken.ThrowIfCancellationRequested();
         EnsureWindows();
         if (VisualPreferences.Handles(settingId)) return Task.FromResult(VisualPreferences.Read(settingId));
+        if (settingId == GamingPowerMode.SettingId) return Task.FromResult(GamingPowerMode.Read());
         return Task.FromResult(settingId == ActivePowerPlan
             ? SettingValue.PowerPlan(PowerPlans.ReadActive()) : ReadRegistry(FindRegistrySetting(settingId)));
     }
@@ -69,6 +80,11 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
         cancellationToken.ThrowIfCancellationRequested();
         EnsureWindows();
         value.Validate();
+        if (settingId == GamingPowerMode.SettingId)
+        {
+            GamingPowerMode.Write(value);
+            return Task.CompletedTask;
+        }
         if (VisualPreferences.Handles(settingId))
         {
             VisualPreferences.Write(settingId, value);
@@ -111,15 +127,24 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
                 foreach (var target in definition.Targets)
                     current.Add(VisualPreferences.Handles(target.SettingId)
                         ? (await ReadAsync(target.SettingId, cancellationToken)).Data == "1" ? "On" : "Off"
-                        : $"{RegistrySettings[target.SettingId].Name}: {(await ReadAsync(target.SettingId, cancellationToken)).ToDisplayString()}");
+                        : DescribeGamePreference(target.SettingId, await ReadAsync(target.SettingId, cancellationToken)));
                 if (definition.Category == "Gaming") EnsureGamingAvailable(definition);
             }
             catch (Exception error) when (error is not OperationCanceledException) { reason = error.Message; }
             result.Add(new TweakStatus(definition.Id, definition.Title, definition.Description, definition.Category,
                 current.Count == 0 ? "Unavailable" : string.Join("; ", current),
-                definition.Id == "game-mode" ? "Enabled" : "Disabled", reason is null, false,
+                definition.Id == "gaming-ready" ? "Game Mode on · Game recording off · Background recording off"
+                    : definition.Id == "game-mode" ? "Enabled" : "Disabled", reason is null, false,
                 definition.RestartRequired, reason));
         }
+
+        var powerMode = "Unavailable";
+        string? powerModeIssue = null;
+        try { powerMode = GamingPowerMode.Describe(GamingPowerMode.Read()); GamingPowerMode.EnsureCanApply(); }
+        catch (Exception error) when (error is not OperationCanceledException) { powerModeIssue = error.Message; }
+        result.Insert(1, new TweakStatus("gaming-power", "Plugged-in performance",
+            "Request Windows 11 Best Performance while plugged in. Can increase heat, power use and fan noise. Battery mode stays unchanged; firmware, thermal limits and other system signals can override the effective mode. The saved AC preference is restored from Recovery.",
+            "Power", powerMode, "Best performance (AC only)", powerModeIssue is null, false, false, powerModeIssue));
 
         try
         {
@@ -153,6 +178,19 @@ internal sealed class WindowsSettingsAdapter : ISettingsAdapter
     private static RegistrySetting FindRegistrySetting(string settingId)
         => RegistrySettings.TryGetValue(settingId, out var setting) ? setting
             : throw new InvalidDataException("This setting identifier is not in the optimizer allowlist.");
+
+    private static string DescribeGamePreference(string id, SettingValue value)
+    {
+        var label = id switch
+        {
+            "gaming.auto-game-mode" => "Automatic Game Mode", "gaming.allow-auto-game-mode" => "Game Mode permission",
+            "gaming.game-dvr" => "Game recording", "gaming.app-capture" => "App capture",
+            "gaming.historical-capture" => "Background recording", _ => id
+        };
+        var state = !value.Exists ? "Windows default" : value.Kind == SettingValueKind.DWord && value.Data is "0" or "1"
+            ? value.Data == "1" ? "On" : "Off" : value.ToDisplayString();
+        return label + ": " + state;
+    }
 
     private static SettingValue ReadRegistry(RegistrySetting setting)
     {

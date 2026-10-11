@@ -644,6 +644,7 @@ body:has(.design-previews) .tsqd-open-btn-container {
 }
 .pv-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 32px;
@@ -671,6 +672,30 @@ body:has(.design-previews) .tsqd-open-btn-container {
   background: transparent;
   padding: 8px 0;
   color: inherit;
+}
+.pv-directory-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 20px;
+  width: 100%;
+  margin: 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--pv-line);
+  list-style: none;
+}
+.pv-directory-badges li {
+  max-width: 100%;
+}
+.pv-directory-badges a {
+  display: flex;
+  align-items: center;
+  min-height: 60px;
+}
+.pv-directory-badges img {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 /* A: an editorial, warm-white product page with offset type and a quiet red accent. */
 .pv-paper .pv-product-shot {

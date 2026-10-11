@@ -460,6 +460,57 @@ function BrowserGames() {
   );
 }
 
+const directoryBadges = [
+  {
+    href: 'https://findly.tools/radiant-optimizer?utm_source=radiant-optimizer',
+    src: 'https://findly.tools/badges/findly-tools-badge-light.svg',
+    alt: 'Featured on Findly.tools',
+    width: 175,
+    height: 55,
+  },
+  {
+    href: 'https://twelve.tools',
+    src: 'https://twelve.tools/badge1-light.svg',
+    alt: 'Featured on Twelve Tools',
+    width: 148,
+    height: 40,
+  },
+  {
+    href: 'https://turbo0.com/item/radiant-optimizer',
+    src: 'https://img.turbo0.com/badge-listed-light.svg',
+    alt: 'Listed on Turbo0',
+    height: 54,
+  },
+  {
+    href: 'https://www.foundrlist.com/product/radiantoptimizer?utm_source=badge&utm_medium=embed',
+    src: 'https://www.foundrlist.com/api/badge/radiantoptimizer',
+    alt: 'Featured on FoundrList',
+    width: 150,
+    height: 48,
+  },
+  {
+    href: 'https://fastlaunch.io',
+    src: 'https://fastlaunch.io/images/badges/featured-light.svg',
+    alt: 'Featured on FastLaunch',
+    width: 221,
+    height: 60,
+  },
+  {
+    href: 'https://deeplaunch.io',
+    src: 'https://deeplaunch.io/badge/badge_light.svg',
+    alt: 'Featured on DeepLaunch.io',
+    width: 200,
+    height: 54,
+  },
+  {
+    href: 'https://dofollow.tools',
+    src: 'https://dofollow.tools/badge/badge_light.svg',
+    alt: 'Featured on Dofollow.Tools',
+    width: 200,
+    height: 54,
+  },
+];
+
 function PreviewFooter() {
   return (
     <footer className="pv-footer pv-width">
@@ -486,6 +537,27 @@ function PreviewFooter() {
           className="pv-locale"
         />
       </nav>
+      <ul className="pv-directory-badges">
+        {directoryBadges.map((badge) => (
+          <li key={badge.href}>
+            <a href={badge.href} target="_blank" rel="noopener noreferrer">
+              <img
+                src={badge.src}
+                alt={badge.alt}
+                width={badge.width}
+                height={badge.height}
+                style={
+                  badge.width
+                    ? undefined
+                    : { height: badge.height, width: 'auto' }
+                }
+                loading="lazy"
+                decoding="async"
+              />
+            </a>
+          </li>
+        ))}
+      </ul>
     </footer>
   );
 }
